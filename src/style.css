@@ -1,47 +1,56 @@
 /**
- * design.md — もちもち犬デザインシステム
- * もちもち・しろっぽい・かわいい。
+ * design.md — もちもち生活費 クリーン＆フラットデザインシステム
+ * 視覚的ノイズ（Clutter）を排除し、白背景・微細シャドウ・セグメントコントロールで
+ * 軽快でモダン、かつ愛らしいUIへ進化
  */
 
 :root {
-  /* color */
-  --mochi-milk:   #FFFDF7; /* ページ背景（もっとも明るい白） */
-  --mochi-white:  #FBF6E9; /* キャラの体色・カード背景・メイン面 */
-  --mochi-kinako: #F3EAD3; /* 区切り・サブ面・ホバー時の背景 */
-  --mochi-yaki:   #F2B34C; /* 焼き色: 強調・ハイライト・ボタンのアクセント */
-  --mochi-konga:  #E8963A; /* こんがり: 濃いめの強調 */
-  --mochi-cheek:  #F7CF85; /* ほっぺ: 頬のにじみ・タグ・やわらかい装飾 */
-  --mochi-ink:    #1A1A1A; /* 墨: 輪郭線・本文・キャプション背景 */
-  --mochi-ink-sub:#6B655A; /* うす墨: 補足テキスト・注釈 */
+  /* color tokens */
+  --mochi-milk:   #F8F6F0; /* アプリ背景（温かみのある淡いミルキーベージュ） */
+  --mochi-white:  #FFFFFF; /* カード・コンテナ背景（純白で背景とのコントラストを出す） */
+  --mochi-kinako: #EBE4D5; /* サブ背景・セグメントトグルベース・枠線 */
+  --mochi-yaki:   #F2B34C; /* 焼き色: プライマリアクション・アクセント・FAB */
+  --mochi-konga:  #E8963A; /* こんがりアクセント */
+  --mochi-cheek:  #FCEBD2; /* ほっぺ: やわらかいハイライト */
+  --mochi-ink:    #1F1E1B; /* 本文・主テキスト（柔らかい墨色） */
+  --mochi-ink-sub:#7A7366; /* 補足テキスト・注釈 */
 
-  /* partner soft accents (あたたかいパステル) */
-  --partner-a-tag: #E3EEFA;
-  --partner-a-border: #7EA8D6;
-  --partner-b-tag: #FAE4E3;
-  --partner-b-border: #D68A86;
+  /* partner pastel accents */
+  --partner-a-tag:    #EAF2FC;
+  --partner-a-border: rgba(126, 168, 214, 0.35);
+  --partner-b-tag:    #FCEEEF;
+  --partner-b-border: rgba(214, 138, 134, 0.35);
 
   /* radius */
-  --radius-s: 16px;
-  --radius-m: 20px;
-  --radius-l: 28px;
+  --radius-xs: 8px;
+  --radius-s: 14px;
+  --radius-m: 18px;
+  --radius-l: 24px;
   --radius-full: 999px;
 
-  /* line */
-  --line-main: 2.5px solid var(--mochi-ink);
-  --line-subtle: 1.5px solid #E6DCC3;
+  /* borders: クリーンな微細グレー線（太い黒枠は全廃） */
+  --border-card:   1px solid rgba(0, 0, 0, 0.06);
+  --border-subtle: 1px solid rgba(0, 0, 0, 0.05);
+  --border-input:  1.5px solid #E2D9CA;
+  --line-main:     1px solid rgba(0, 0, 0, 0.06); /* 後方互換 */
 
-  /* font */
+  /* typography */
   --font-base: "Zen Maru Gothic", "M PLUS Rounded 1c", sans-serif;
   --font-caption: "Noto Sans JP", sans-serif;
 
   /* motion */
   --ease-mochi: cubic-bezier(0.34, 1.3, 0.64, 1);
-  --dur-base: 0.25s;
+  --dur-base: 0.22s;
 
-  /* shadow: もちっとした立体感 */
-  --shadow-mochi: 0 6px 0 rgba(26, 26, 26, 0.08), inset 0 -6px 12px rgba(242, 179, 76, 0.12);
-  --shadow-button: 0 4px 0 var(--mochi-ink);
-  --shadow-button-pressed: 0 1px 0 var(--mochi-ink);
+  /* shadows: 上品なソフトシャドウ（重い黒ベタ影 0 4px 0 #1A1A1A は全廃） */
+  --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+  --shadow-card-hover: 0 10px 28px -4px rgba(0, 0, 0, 0.07), 0 2px 6px rgba(0, 0, 0, 0.03);
+  --shadow-primary: 0 4px 14px rgba(242, 179, 76, 0.38);
+  --shadow-primary-hover: 0 6px 20px rgba(242, 179, 76, 0.48);
+  --shadow-secondary: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-button: var(--shadow-primary);
+  --shadow-button-pressed: 0 1px 3px rgba(242, 179, 76, 0.3);
+  --shadow-segmented: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 * {
@@ -54,13 +63,13 @@
 body {
   background-color: var(--mochi-milk);
   background-image: 
-    radial-gradient(ellipse at 15% 10%, rgba(247, 207, 133, 0.25) 0%, transparent 40%),
-    radial-gradient(ellipse at 85% 80%, rgba(242, 179, 76, 0.15) 0%, transparent 45%);
+    radial-gradient(ellipse at 15% 10%, rgba(247, 207, 133, 0.18) 0%, transparent 45%),
+    radial-gradient(ellipse at 85% 80%, rgba(242, 179, 76, 0.12) 0%, transparent 50%);
   background-attachment: fixed;
   color: var(--mochi-ink);
   font-family: var(--font-base);
-  line-height: 1.9;
-  letter-spacing: 0.04em;
+  line-height: 1.8;
+  letter-spacing: 0.03em;
   min-height: 100vh;
   display: flex;
   justify-content: center;
@@ -72,22 +81,22 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 0 16px 100px;
+  padding: 0 18px 105px;
   position: relative;
 }
 
-/* 6.1 キャプション帯（最重要・このデザインの顔） */
+/* キャプション帯（犬の下のステッカーラベル・クリーンな角丸ピル） */
 .caption-band {
   display: inline-block;
   background: var(--mochi-ink);
   color: #FFFFFF;
-  padding: 6px 18px;
+  padding: 5px 16px;
   font-family: var(--font-caption);
   font-weight: 500;
-  font-size: 15px;
-  letter-spacing: 0.08em;
-  border-radius: 0 !important; /* ここだけ直角 */
-  box-shadow: 0 4px 0 rgba(26, 26, 26, 0.15);
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  border-radius: var(--radius-full);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
   margin-top: -6px;
   z-index: 5;
   transition: transform var(--dur-base) var(--ease-mochi);
@@ -98,17 +107,17 @@ body {
   position: sticky;
   top: 0;
   z-index: 30;
-  background: rgba(255, 253, 247, 0.92);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-bottom: var(--line-main);
+  background: rgba(248, 246, 240, 0.90);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   padding: 12px 6px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 0 -16px 12px;
-  padding-left: 18px;
-  padding-right: 18px;
+  margin: 0 -18px 14px;
+  padding-left: 20px;
+  padding-right: 20px;
 }
 
 .brand {
@@ -125,12 +134,12 @@ body {
 }
 
 .brand:hover .brand-icon {
-  transform: rotate(-8deg) scale(1.1);
+  transform: rotate(-8deg) scale(1.08);
 }
 
 .brand-title {
   font-weight: 900;
-  font-size: 1.35rem;
+  font-size: 1.3rem;
   letter-spacing: -0.01em;
   color: var(--mochi-ink);
 }
@@ -150,16 +159,17 @@ body {
   font-weight: 700;
   border-radius: var(--radius-full);
   background: var(--mochi-white);
-  border: var(--line-main);
+  border: var(--border-card);
   color: var(--mochi-ink);
-  box-shadow: 0 2px 0 var(--mochi-ink);
+  box-shadow: var(--shadow-secondary);
   cursor: pointer;
   transition: all var(--dur-base) var(--ease-mochi);
 }
 
 .sync-badge:hover {
-  background: var(--mochi-kinako);
+  background: #FAF7F0;
   transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.05);
 }
 
 .sync-dot {
@@ -167,7 +177,6 @@ body {
   height: 8px;
   border-radius: 50%;
   background: var(--mochi-yaki);
-  border: 1.5px solid var(--mochi-ink);
 }
 
 .sync-dot.connected {
@@ -179,24 +188,25 @@ body {
   height: 40px;
   border-radius: var(--radius-full);
   background: var(--mochi-white);
-  border: var(--line-main);
+  border: var(--border-card);
   color: var(--mochi-ink);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 3px 0 var(--mochi-ink);
+  box-shadow: var(--shadow-secondary);
   transition: all var(--dur-base) var(--ease-mochi);
 }
 
 .icon-btn:hover {
-  background: var(--mochi-kinako);
-  transform: translateY(-2px);
+  background: #FAF7F0;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
 }
 
 .icon-btn:active {
-  transform: translateY(2px);
-  box-shadow: 0 1px 0 var(--mochi-ink);
+  transform: translateY(0);
+  box-shadow: var(--shadow-secondary);
 }
 
 /* Month Navigation */
@@ -204,7 +214,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
   gap: 8px;
 }
 
@@ -220,17 +230,16 @@ body {
   align-items: center;
   gap: 8px;
   background: var(--mochi-white);
-  border: var(--line-main);
+  border: var(--border-card);
   border-radius: var(--radius-full);
-  padding: 4px 10px;
-  box-shadow: 0 3px 0 var(--mochi-ink);
+  padding: 4px 12px;
+  box-shadow: var(--shadow-secondary);
 }
 
 .btn-return-month {
-  padding: 4px 10px;
+  padding: 5px 12px;
   font-size: 0.78rem;
   border-radius: var(--radius-full);
-  box-shadow: 0 2px 0 var(--mochi-ink);
   white-space: nowrap;
 }
 
@@ -251,23 +260,25 @@ body {
 
 .month-btn:hover {
   background: var(--mochi-cheek);
-  transform: scale(1.1);
+  transform: scale(1.08);
 }
 
 .current-month-label {
-  font-weight: 900;
-  font-size: 1.05rem;
+  font-weight: 800;
+  font-size: 1.02rem;
   padding: 0 6px;
 }
 
 .quick-stats-badge {
   font-size: 0.78rem;
+  font-weight: 600;
   color: var(--mochi-ink-sub);
   background: var(--mochi-white);
-  border: 1.5px solid #E6DCC3;
-  padding: 4px 10px;
+  border: var(--border-card);
+  padding: 5px 12px;
   border-radius: var(--radius-full);
   white-space: nowrap;
+  box-shadow: var(--shadow-secondary);
 }
 
 @media (max-width: 520px) {
@@ -285,45 +296,49 @@ body {
   }
 }
 
-/* 6.3 カード (もち白 + 角丸28px + 墨枠線 + 焼き色のにじみ) */
+/* ========================================================
+   1. カード＆コンテナ (純白 #FFFFFF + 微細グレー枠 + ソフトシャドウ)
+   ======================================================== */
 .mochi-card {
   background: var(--mochi-white);
   border-radius: var(--radius-l);
-  border: var(--line-main);
-  padding: 26px 22px;
-  box-shadow: var(--shadow-mochi), 0 5px 0 var(--mochi-ink);
+  border: var(--border-card);
+  padding: 30px 24px;
+  box-shadow: var(--shadow-card);
   position: relative;
   overflow: hidden;
-  margin-bottom: 20px;
+  margin-bottom: 22px;
+  transition: box-shadow var(--dur-base) ease, transform var(--dur-base) ease;
 }
 
-/* 焼き色のにじみ（右上） */
+/* 焼き色のにじみ（右上・淡く上品に） */
 .mochi-card::before {
   content: '';
   position: absolute;
-  top: -20px;
-  right: -20px;
-  width: 140px;
-  height: 140px;
+  top: -30px;
+  right: -30px;
+  width: 150px;
+  height: 150px;
   border-radius: 50%;
-  background: radial-gradient(ellipse at center, rgba(242, 179, 76, 0.4) 0%, rgba(247, 207, 133, 0.15) 50%, transparent 70%);
+  background: radial-gradient(ellipse at center, rgba(242, 179, 76, 0.22) 0%, rgba(247, 207, 133, 0.08) 55%, transparent 75%);
   pointer-events: none;
 }
 
-/* ヒーロー精算セクション（中央揃え・キャラ主役） */
+/* ヒーロー精算セクション（中央揃え・余白を広げて窮屈さを解消） */
 .settlement-hero {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 8px;
+  padding: 32px 26px 28px;
+  gap: 10px;
 }
 
 .hero-character-wrapper {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 6px;
+  margin-bottom: 12px;
   position: relative;
 }
 
@@ -332,22 +347,24 @@ body {
 }
 
 .hero-character-wrapper:hover .mochi-dog-svg {
-  transform: scale(1.05) translateY(-4px);
+  transform: scale(1.04) translateY(-3px);
 }
 
 .settlement-amount-box {
-  margin: 6px 0 16px;
+  margin: 10px 0 20px;
+  padding: 0 4px;
 }
 
 .settlement-subtitle {
-  font-size: 0.9rem;
+  font-size: 0.92rem;
   color: var(--mochi-ink-sub);
   font-weight: 500;
-  margin-bottom: 2px;
+  margin-bottom: 6px;
+  line-height: 1.5;
 }
 
 .settlement-title {
-  font-size: 2.2rem;
+  font-size: 2.35rem;
   font-weight: 900;
   letter-spacing: -0.02em;
   color: var(--mochi-ink);
@@ -355,46 +372,51 @@ body {
   align-items: baseline;
   justify-content: center;
   gap: 4px;
+  line-height: 1.2;
 }
 
 .settlement-title.even {
-  font-size: 1.7rem;
+  font-size: 1.75rem;
   color: var(--mochi-ink);
 }
 
 .settlement-title .yen-mark {
-  font-size: 1.4rem;
+  font-size: 1.45rem;
   font-weight: 700;
   color: var(--mochi-konga);
 }
 
-/* シーソー対象切替バー（変動費のみ vs すべて含む） */
+/* ========================================================
+   3. タブ・トグル (標準的なSegmented Control UI)
+   ======================================================== */
+
+/* シーソー対象切替バー（Segmented Control） */
 .seesaw-scope-bar {
   display: flex;
   justify-content: center;
-  margin: 10px 0 6px;
+  margin: 0 0 16px;
 }
 
 .seesaw-scope-toggle {
   display: inline-flex;
-  background: var(--mochi-kinako);
-  border: var(--line-main);
+  background: #E8E2D4;
+  border: none;
   border-radius: var(--radius-full);
   padding: 3px;
-  gap: 4px;
+  gap: 2px;
 }
 
 .seesaw-scope-btn {
   background: transparent;
   border: none;
   border-radius: var(--radius-full);
-  padding: 6px 14px;
+  padding: 7px 18px;
   font-family: var(--font-base);
-  font-size: 0.78rem;
-  font-weight: 800;
+  font-size: 0.8rem;
+  font-weight: 700;
   color: var(--mochi-ink-sub);
   cursor: pointer;
-  transition: all var(--dur-base) var(--ease-mochi);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   white-space: nowrap;
   display: flex;
   align-items: center;
@@ -404,19 +426,132 @@ body {
 .seesaw-scope-btn.active {
   background: var(--mochi-white);
   color: var(--mochi-ink);
-  border: 1.5px solid var(--mochi-ink);
-  box-shadow: 0 1px 0 var(--mochi-ink);
+  font-weight: 800;
+  border: none;
+  box-shadow: var(--shadow-segmented);
 }
 
-/* もちもち遊具風シーソー */
+/* メインタブバー (Segmented Control) */
+.mochi-tabs {
+  display: flex;
+  background: #E8E2D4;
+  border: none;
+  border-radius: var(--radius-full);
+  padding: 4px;
+  gap: 3px;
+  margin-bottom: 18px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.mochi-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-full);
+  padding: 9px 8px;
+  font-family: var(--font-base);
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--mochi-ink-sub);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.mochi-tab.active {
+  background: var(--mochi-white);
+  color: var(--mochi-ink);
+  font-weight: 800;
+  border: none;
+  box-shadow: var(--shadow-segmented);
+}
+
+.mochi-tab .badge {
+  font-size: 0.7rem;
+  background: #D9D2C2;
+  color: var(--mochi-ink);
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  border: none;
+  line-height: 1.2;
+  font-weight: 800;
+}
+
+.mochi-tab.active .badge {
+  background: var(--mochi-cheek);
+  color: var(--mochi-ink);
+}
+
+@media (max-width: 480px) {
+  .mochi-tabs {
+    padding: 3px;
+    gap: 2px;
+  }
+  .mochi-tab {
+    padding: 7px 3px;
+    font-size: 0.76rem;
+    gap: 3px;
+  }
+  .mochi-tab .badge {
+    font-size: 0.65rem;
+    padding: 0 5px;
+  }
+}
+
+/* 変動費・固定費切替トグル（モーダル内 Segmented Control） */
+.cost-type-toggle {
+  display: flex;
+  background: #E8E2D4;
+  border: none;
+  border-radius: 14px;
+  padding: 4px;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.cost-type-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-family: var(--font-base);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--mochi-ink-sub);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.cost-type-btn.active {
+  background: var(--mochi-white);
+  color: var(--mochi-ink);
+  font-weight: 800;
+  border: none;
+  box-shadow: var(--shadow-segmented);
+}
+
+/* ========================================================
+   4. 遊具風シーソー（余白拡大＆クリーンなフラット化）
+   ======================================================== */
 .seesaw-container {
   width: 100%;
-  background: var(--mochi-kinako);
-  border: var(--line-main);
+  background: #FAF7F0;
+  border: 1px solid rgba(0, 0, 0, 0.05);
   border-radius: var(--radius-m);
-  padding: 16px 14px 12px;
-  margin: 8px 0 18px;
-  box-shadow: inset 0 2px 6px rgba(26, 26, 26, 0.05);
+  padding: 22px 20px 20px;
+  margin: 12px 0 22px;
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.02);
   position: relative;
   overflow: hidden;
 }
@@ -425,43 +560,68 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
+}
+
+.partner-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: var(--mochi-white);
+  box-shadow: var(--shadow-secondary);
+}
+
+.partner-pill.a {
+  background: var(--partner-a-tag);
+  border-color: var(--partner-a-border);
+}
+
+.partner-pill.b {
+  background: var(--partner-b-tag);
+  border-color: var(--partner-b-border);
 }
 
 .seesaw-status-tag {
-  font-size: 0.76rem;
+  font-size: 0.78rem;
   font-weight: 800;
-  padding: 2px 10px;
+  padding: 4px 12px;
   border-radius: var(--radius-full);
-  background: #FFF;
-  border: 1.5px solid var(--mochi-ink);
+  background: var(--mochi-white);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   color: var(--mochi-ink);
-  box-shadow: 0 1px 0 var(--mochi-ink);
+  box-shadow: var(--shadow-secondary);
 }
 
 .seesaw-status-tag.a-heavy {
   background: var(--partner-a-tag);
+  border-color: var(--partner-a-border);
 }
 
 .seesaw-status-tag.b-heavy {
   background: var(--partner-b-tag);
+  border-color: var(--partner-b-border);
 }
 
-/* 遊具風シーソーラッパー */
+/* 遊具風シーソーラッパー（高さを広げて窮屈さを解消） */
 .playground-seesaw-wrapper {
   position: relative;
   width: 100%;
-  height: 114px;
+  height: 128px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 18px 0 6px;
+  margin: 22px 0 10px;
 }
 
 /* 傾く板（全体） */
 .seesaw-plank {
   position: absolute;
-  top: 48px;
+  top: 54px;
   width: 90%;
   height: 14px;
   transform-origin: 50% 50%;
@@ -479,10 +639,10 @@ body {
   left: 0;
   right: 0;
   height: 14px;
-  background: #FFFDF7;
-  border: var(--line-main);
+  background: #FFFFFF;
+  border: 1.5px solid #D8D0C2;
   border-radius: var(--radius-full);
-  box-shadow: 0 3px 0 var(--mochi-ink);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
   z-index: 1;
 }
 
@@ -491,20 +651,20 @@ body {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: var(--mochi-yaki);
-  border: 2px solid var(--mochi-ink);
+  border: 2px solid #FFFFFF;
   transform: translate(-50%, -50%);
   z-index: 3;
-  box-shadow: 0 1px 0 var(--mochi-ink);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 
 /* 両端の席 */
 .seesaw-seat {
   position: absolute;
-  top: -50px;
+  top: -54px;
   z-index: 4;
   display: flex;
   flex-direction: column;
@@ -527,10 +687,10 @@ body {
 }
 
 .dog-rider-img {
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
   object-fit: contain;
-  filter: drop-shadow(0 3px 0 rgba(26, 26, 26, 0.2));
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.12));
   transition: transform 0.3s var(--ease-mochi);
 }
 
@@ -544,24 +704,24 @@ body {
 }
 
 .seat-badge {
-  font-size: 0.65rem;
+  font-size: 0.68rem;
   font-weight: 800;
-  padding: 1px 6px;
+  padding: 2px 8px;
   border-radius: var(--radius-full);
-  border: 1.5px solid var(--mochi-ink);
-  background: #FFF;
-  margin-top: -4px;
+  border: none;
+  background: var(--mochi-white);
+  margin-top: -3px;
   white-space: nowrap;
-  box-shadow: 0 1px 0 var(--mochi-ink);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);
 }
 
 .seat-badge.plus {
   background: var(--mochi-yaki);
-  color: var(--mochi-ink);
+  color: #1A1A1A;
 }
 
 .seat-badge.minus {
-  background: var(--mochi-milk);
+  background: #FFFFFF;
   color: var(--mochi-ink-sub);
 }
 
@@ -569,7 +729,7 @@ body {
 .seat-handle {
   width: 8px;
   height: 10px;
-  border: 2px solid var(--mochi-ink);
+  border: 2px solid #A89F90;
   border-bottom: none;
   border-radius: 4px 4px 0 0;
   margin-top: 2px;
@@ -594,61 +754,282 @@ body {
   border-right: 22px solid transparent;
   border-bottom: 34px solid var(--mochi-yaki);
   position: relative;
-  filter: drop-shadow(0 2px 0 var(--mochi-ink));
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.1));
 }
 
 .fulcrum-ground-line {
   width: 140px;
-  height: 4px;
-  background: var(--mochi-ink);
+  height: 3px;
+  background: #D8D0C2;
   border-radius: var(--radius-full);
-  margin-top: -2px;
+  margin-top: -1px;
 }
 
 .seesaw-labels {
   display: flex;
   justify-content: space-between;
-  font-size: 0.75rem;
+  font-size: 0.76rem;
   color: var(--mochi-ink-sub);
-  margin-top: 8px;
+  margin-top: 12px;
+  padding: 0 2px;
   font-weight: 700;
 }
 
-/* 変動費・固定費切替トグル（モーダル内） */
-.cost-type-toggle {
-  display: flex;
-  background: var(--mochi-kinako);
-  border: var(--line-main);
-  border-radius: var(--radius-md);
-  padding: 4px;
-  gap: 6px;
-  margin-bottom: 12px;
+/* ========================================================
+   2人の負担状況（デュアルカード・背景と余白の最適化）
+   ======================================================== */
+.dual-status-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 24px;
 }
 
-.cost-type-btn {
-  flex: 1;
-  background: transparent;
-  border: 2px solid transparent;
-  border-radius: var(--radius-sm);
-  padding: 8px 10px;
-  font-family: var(--font-base);
-  font-size: 0.85rem;
-  font-weight: 800;
-  color: var(--mochi-ink-sub);
-  cursor: pointer;
-  transition: all var(--dur-base) var(--ease-mochi);
+.person-card {
+  background: var(--mochi-white);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: var(--radius-m);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-card);
+  text-align: left;
+  transition: transform var(--dur-base) ease, box-shadow var(--dur-base) ease;
+}
+
+.person-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.person-card.a {
+  background: linear-gradient(180deg, #F8FAFD 0%, #FFFFFF 100%);
+  border-color: var(--partner-a-border);
+}
+
+.person-card.b {
+  background: linear-gradient(180deg, #FDF8F8 0%, #FFFFFF 100%);
+  border-color: var(--partner-b-border);
+}
+
+.person-header {
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.person-name {
+  font-weight: 900;
+  font-size: 0.95rem;
+}
+
+.person-ratio-tag {
+  font-size: 0.72rem;
+  font-weight: 800;
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--mochi-ink);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  border: none;
+}
+
+.person-paid-val {
+  font-size: 1.45rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  margin: 4px 0 2px;
+}
+
+.person-goal-val {
+  font-size: 0.76rem;
+  color: var(--mochi-ink-sub);
+}
+
+.person-diff-val {
+  font-size: 0.82rem;
+  font-weight: 800;
+  margin-top: 6px;
+}
+
+.person-diff-val.plus {
+  color: #2563EB;
+}
+
+.person-diff-val.minus {
+  color: #DC2626;
+}
+
+/* ========================================================
+   2. ボタンと要素の階層化 (プライマリ vs セカンダリ)
+   ======================================================== */
+.settlement-actions {
+  width: 100%;
+  display: flex;
+  gap: 12px;
+}
+
+.settlement-actions .btn-primary {
+  flex: 1.4;
+}
+
+.settlement-actions .btn-secondary {
+  flex: 1;
+}
+
+/* プライマリアクション（LINEでお知らせ等：鮮やかなアンバー＋ソフトリフト） */
+.btn-primary {
+  background: var(--mochi-yaki);
+  color: #1A1A1A;
+  border: none;
+  border-radius: var(--radius-full);
+  padding: 13px 22px;
+  font-family: var(--font-base);
+  font-size: 0.95rem;
+  font-weight: 900;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: var(--shadow-primary);
+  transition: all var(--dur-base) var(--ease-mochi);
 }
 
-.cost-type-btn.active {
+.btn-primary:hover {
+  background: #EEAA3D;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-primary-hover);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: var(--shadow-button-pressed);
+}
+
+/* セカンダリアクション（精算完了等：白背景＋薄い枠線で控えめに） */
+.btn-secondary {
   background: var(--mochi-white);
   color: var(--mochi-ink);
-  border: 2px solid var(--mochi-ink);
-  box-shadow: 0 2px 0 var(--mochi-ink);
+  border: 1.5px solid #D8CFBE;
+  border-radius: var(--radius-full);
+  padding: 12px 20px;
+  font-family: var(--font-base);
+  font-size: 0.95rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: var(--shadow-secondary);
+  transition: all var(--dur-base) var(--ease-mochi);
+}
+
+.btn-secondary:hover {
+  background: #FAF7F0;
+  border-color: #BFB49F;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.btn-secondary:active {
+  background: #F2ECE0;
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+/* 3連統計サマリー（総支出・固定費・変動費） */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.stat-box {
+  background: var(--mochi-white);
+  border: var(--border-card);
+  border-radius: var(--radius-m);
+  padding: 15px 14px;
+  box-shadow: var(--shadow-card);
+  text-align: center;
+  transition: transform var(--dur-base) ease, box-shadow var(--dur-base) ease;
+}
+
+.stat-box:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.stat-box-title {
+  font-size: 0.8rem;
+  color: var(--mochi-ink-sub);
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+
+.stat-box-num {
+  font-size: 1.22rem;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+
+/* 固定費バナー */
+.fixed-cost-intro-banner {
+  background: var(--mochi-white);
+  border: var(--border-card);
+  border-radius: var(--radius-m);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+/* ========================================================
+   カテゴリータグ（食費・外食など：太枠を外し薄背景＋角丸ピルへ）
+   ======================================================== */
+.category-filter-bar {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: none;
+  margin-bottom: 14px;
+}
+
+.category-filter-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.mochi-chip {
+  background: var(--mochi-white);
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: var(--radius-full);
+  padding: 5px 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--mochi-ink-sub);
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: var(--shadow-secondary);
+  transition: all var(--dur-base) var(--ease-mochi);
+}
+
+.mochi-chip:hover {
+  background: #FAF7F0;
+  color: var(--mochi-ink);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+.mochi-chip.active {
+  background: var(--mochi-yaki);
+  border-color: transparent;
+  color: #1A1A1A;
+  font-weight: 800;
+  box-shadow: 0 3px 10px rgba(242, 179, 76, 0.35);
+  transform: translateY(-1px);
 }
 
 /* 一括選択・削除バー */
@@ -661,26 +1042,25 @@ body {
 }
 
 .btn-select-mode {
-  padding: 4px 10px;
+  padding: 5px 12px;
   font-size: 0.78rem;
   border-radius: var(--radius-full);
-  box-shadow: 0 2px 0 var(--mochi-ink);
 }
 
 .bulk-action-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--mochi-kinako);
-  border: var(--line-main);
+  background: #FAF7F0;
+  border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: var(--radius-m);
-  padding: 8px 12px;
-  margin-bottom: 12px;
-  box-shadow: 0 3px 0 var(--mochi-ink);
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow-secondary);
 }
 
 .item-checkbox-wrapper {
-  margin-right: 10px;
+  margin-right: 12px;
   display: flex;
   align-items: center;
 }
@@ -693,318 +1073,6 @@ body {
   border-radius: 4px;
 }
 
-.expense-card-item.selection-mode {
-  cursor: pointer;
-}
-
-.expense-card-item.selection-mode.selected {
-  background: #FFF7ED;
-  border-color: #F97316;
-}
-
-.partner-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.82rem;
-  font-weight: 700;
-  padding: 4px 10px;
-  border-radius: var(--radius-full);
-  border: 2px solid var(--mochi-ink);
-  background: #FFF;
-}
-
-.partner-pill.a {
-  background: var(--partner-a-tag);
-}
-
-.partner-pill.b {
-  background: var(--partner-b-tag);
-}
-
-/* 2人の負担状況（デュアルカード） */
-.dual-status-grid {
-  width: 100%;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.person-card {
-  background: var(--mochi-white);
-  border: var(--line-main);
-  border-radius: var(--radius-m);
-  padding: 14px 16px;
-  box-shadow: 0 4px 0 var(--mochi-ink);
-  text-align: left;
-}
-
-.person-card.a {
-  background: #FAFCFF;
-}
-
-.person-card.b {
-  background: #FFF9F9;
-}
-
-.person-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
-}
-
-.person-name {
-  font-weight: 900;
-  font-size: 0.95rem;
-}
-
-.person-ratio-tag {
-  font-size: 0.72rem;
-  font-weight: 700;
-  background: var(--mochi-cheek);
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  border: 1.5px solid var(--mochi-ink);
-}
-
-.person-paid-val {
-  font-size: 1.35rem;
-  font-weight: 900;
-  letter-spacing: -0.02em;
-}
-
-.person-goal-val {
-  font-size: 0.75rem;
-  color: var(--mochi-ink-sub);
-}
-
-.person-diff-val {
-  font-size: 0.8rem;
-  font-weight: 800;
-  margin-top: 4px;
-}
-
-.person-diff-val.plus {
-  color: #2563EB;
-}
-
-.person-diff-val.minus {
-  color: #DC2626;
-}
-
-/* 6.2 ボタン（完全な丸み・2px墨枠線・押下でぷにっ） */
-.btn-primary {
-  background: var(--mochi-yaki);
-  color: var(--mochi-ink);
-  border: var(--line-main);
-  border-radius: var(--radius-full);
-  padding: 12px 22px;
-  font-family: var(--font-base);
-  font-size: 0.95rem;
-  font-weight: 900;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  cursor: pointer;
-  box-shadow: var(--shadow-button);
-  transition: all var(--dur-base) var(--ease-mochi);
-}
-
-.btn-primary:hover {
-  transform: scale(1.03) translateY(-2px);
-  box-shadow: 0 6px 0 var(--mochi-ink);
-}
-
-.btn-primary:active {
-  transform: scale(0.97) translateY(2px);
-  box-shadow: var(--shadow-button-pressed);
-}
-
-.btn-secondary {
-  background: var(--mochi-white);
-  color: var(--mochi-ink);
-  border: var(--line-main);
-  border-radius: var(--radius-full);
-  padding: 12px 20px;
-  font-family: var(--font-base);
-  font-size: 0.95rem;
-  font-weight: 900;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  cursor: pointer;
-  box-shadow: var(--shadow-button);
-  transition: all var(--dur-base) var(--ease-mochi);
-}
-
-.btn-secondary:hover {
-  background: var(--mochi-kinako);
-  transform: scale(1.03) translateY(-2px);
-  box-shadow: 0 6px 0 var(--mochi-ink);
-}
-
-.btn-secondary:active {
-  transform: scale(0.97) translateY(2px);
-  box-shadow: var(--shadow-button-pressed);
-}
-
-.settlement-actions {
-  width: 100%;
-  display: flex;
-  gap: 10px;
-}
-
-.settlement-actions .btn-primary {
-  flex: 1.4;
-}
-
-.settlement-actions .btn-secondary {
-  flex: 1;
-}
-
-/* 統計サマリー（総支出・固定費・変動費） */
-.stats-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-bottom: 20px;
-}
-
-.stat-box {
-  background: var(--mochi-white);
-  border: var(--line-main);
-  border-radius: var(--radius-m);
-  padding: 12px 14px;
-  box-shadow: 0 4px 0 var(--mochi-ink);
-  text-align: center;
-}
-
-.stat-box-title {
-  font-size: 0.78rem;
-  color: var(--mochi-ink-sub);
-  font-weight: 700;
-  margin-bottom: 2px;
-}
-
-.stat-box-num {
-  font-size: 1.15rem;
-  font-weight: 900;
-  letter-spacing: -0.01em;
-}
-
-/* タブバー (丸角999px + 墨枠線) */
-.mochi-tabs {
-  display: flex;
-  background: var(--mochi-kinako);
-  border: var(--line-main);
-  border-radius: var(--radius-full);
-  padding: 4px;
-  gap: 4px;
-  margin-bottom: 16px;
-  overflow: hidden;
-}
-
-.mochi-tab {
-  flex: 1;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-full);
-  padding: 8px 6px;
-  font-family: var(--font-base);
-  font-size: 0.84rem;
-  font-weight: 800;
-  color: var(--mochi-ink-sub);
-  cursor: pointer;
-  transition: all var(--dur-base) var(--ease-mochi);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-.mochi-tab.active {
-  background: var(--mochi-white);
-  color: var(--mochi-ink);
-  border: 2px solid var(--mochi-ink);
-  box-shadow: 0 2px 0 var(--mochi-ink);
-}
-
-.mochi-tab .badge {
-  font-size: 0.68rem;
-  background: var(--mochi-cheek);
-  padding: 1px 5px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--mochi-ink);
-  line-height: 1.2;
-}
-
-@media (max-width: 480px) {
-  .mochi-tabs {
-    padding: 3px;
-    gap: 2px;
-  }
-  .mochi-tab {
-    padding: 6px 2px;
-    font-size: 0.74rem;
-    gap: 2px;
-  }
-  .mochi-tab .badge {
-    font-size: 0.62rem;
-    padding: 0 4px;
-  }
-}
-
-/* 固定費バナー */
-.fixed-cost-intro-banner {
-  background: var(--mochi-white);
-  border: var(--line-main);
-  border-radius: var(--radius-m);
-  padding: 16px 18px;
-  box-shadow: 0 4px 0 var(--mochi-ink);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-/* カテゴリフィルタ（チップ） */
-.category-filter-bar {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  padding-bottom: 8px;
-  scrollbar-width: none;
-  margin-bottom: 12px;
-}
-
-.category-filter-bar::-webkit-scrollbar {
-  display: none;
-}
-
-.mochi-chip {
-  background: var(--mochi-white);
-  border: var(--line-main);
-  border-radius: var(--radius-full);
-  padding: 4px 12px;
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: var(--mochi-ink);
-  white-space: nowrap;
-  cursor: pointer;
-  box-shadow: 0 2px 0 var(--mochi-ink);
-  transition: all var(--dur-base) var(--ease-mochi);
-}
-
-.mochi-chip.active {
-  background: var(--mochi-yaki);
-  transform: translateY(-1px);
-}
-
 /* 支出リストアイテム */
 .expense-items-list {
   display: flex;
@@ -1014,21 +1082,30 @@ body {
 
 .expense-card-item {
   background: var(--mochi-white);
-  border: var(--line-main);
+  border: 1px solid rgba(0, 0, 0, 0.05);
   border-radius: var(--radius-m);
-  padding: 14px 16px;
+  padding: 15px 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 3px 0 var(--mochi-ink);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
   cursor: pointer;
   transition: all var(--dur-base) var(--ease-mochi);
 }
 
 .expense-card-item:hover {
-  background: #FFF;
+  background: #FFFFFF;
   transform: translateY(-2px);
-  box-shadow: 0 5px 0 var(--mochi-ink);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.expense-card-item.selection-mode {
+  cursor: pointer;
+}
+
+.expense-card-item.selection-mode.selected {
+  background: #FFF9F2;
+  border-color: rgba(249, 115, 22, 0.4);
 }
 
 .expense-card-left {
@@ -1043,8 +1120,8 @@ body {
   width: 44px;
   height: 44px;
   border-radius: var(--radius-s);
-  border: var(--line-main);
-  background: var(--mochi-kinako);
+  border: none;
+  background: #F4EFE6;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1083,9 +1160,10 @@ body {
 .payer-badge-pill {
   font-weight: 800;
   font-size: 0.7rem;
-  padding: 1px 6px;
+  padding: 2px 8px;
   border-radius: var(--radius-full);
-  border: 1.5px solid var(--mochi-ink);
+  border: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .payer-badge-pill.a {
@@ -1113,45 +1191,47 @@ body {
   gap: 8px;
 }
 
-/* FAB ボタン（完全な丸み・焼き色・ぷにっと弾む） */
+/* FAB ボタン（完全な丸み・ソフトリフト・アンバーグロー） */
 .mochi-fab {
   position: fixed;
   bottom: 24px;
   right: 24px;
   z-index: 40;
   background: var(--mochi-yaki);
-  color: var(--mochi-ink);
-  border: var(--line-main);
+  color: #1A1A1A;
+  border: none;
   border-radius: var(--radius-full);
-  padding: 14px 24px;
+  padding: 14px 26px;
   font-family: var(--font-base);
   font-size: 1rem;
   font-weight: 900;
   display: flex;
   align-items: center;
   gap: 8px;
-  box-shadow: 0 6px 0 var(--mochi-ink);
+  box-shadow: 0 6px 20px rgba(242, 179, 76, 0.45);
   cursor: pointer;
   transition: all var(--dur-base) var(--ease-mochi);
 }
 
 .mochi-fab:hover {
-  transform: scale(1.06) translateY(-3px);
-  box-shadow: 0 9px 0 var(--mochi-ink);
+  transform: scale(1.05) translateY(-2px);
+  box-shadow: 0 8px 26px rgba(242, 179, 76, 0.55);
 }
 
 .mochi-fab:active {
-  transform: scale(0.96) translateY(3px);
-  box-shadow: 0 2px 0 var(--mochi-ink);
+  transform: scale(0.97) translateY(1px);
+  box-shadow: 0 3px 10px rgba(242, 179, 76, 0.4);
 }
 
-/* 6.4 入力欄 & モーダル */
+/* ========================================================
+   入力欄 & モーダル（クリーンなフラットダイアログ）
+   ======================================================== */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(26, 26, 26, 0.4);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(26, 26, 26, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   z-index: 100;
   display: flex;
   align-items: flex-end;
@@ -1177,9 +1257,9 @@ body {
   width: 100%;
   max-width: 520px;
   background: var(--mochi-white);
-  border: var(--line-main);
+  border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: var(--radius-l) var(--radius-l) 0 0;
-  box-shadow: var(--shadow-mochi), 0 10px 0 var(--mochi-ink);
+  box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.2);
   max-height: 90vh;
   display: flex;
   flex-direction: column;
@@ -1191,7 +1271,7 @@ body {
 @media (min-width: 640px) {
   .modal-dialog {
     border-radius: var(--radius-l);
-    transform: scale(0.95);
+    transform: scale(0.96);
   }
 }
 
@@ -1210,8 +1290,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: var(--line-main);
-  background: var(--mochi-kinako);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  background: #FAF7F2;
 }
 
 .modal-title {
@@ -1229,11 +1309,11 @@ body {
 
 .modal-footer {
   padding: 16px 22px;
-  border-top: var(--line-main);
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
   display: flex;
   gap: 10px;
   justify-content: flex-end;
-  background: var(--mochi-kinako);
+  background: #FAF7F2;
 }
 
 /* フォーム要素 */
@@ -1250,8 +1330,8 @@ body {
 }
 
 .form-input, .form-select {
-  background: var(--mochi-milk);
-  border: var(--line-main);
+  background: #FAF8F4;
+  border: var(--border-input);
   border-radius: var(--radius-m);
   padding: 12px 14px;
   color: var(--mochi-ink);
@@ -1263,8 +1343,9 @@ body {
 }
 
 .form-input:focus, .form-select:focus {
-  border-color: var(--mochi-ink);
-  box-shadow: 0 0 0 4px var(--mochi-cheek);
+  background: #FFFFFF;
+  border-color: var(--mochi-yaki);
+  box-shadow: 0 0 0 3px rgba(242, 179, 76, 0.25);
 }
 
 .form-row {
@@ -1281,29 +1362,31 @@ body {
 }
 
 .payer-toggle-btn {
-  background: var(--mochi-milk);
-  border: var(--line-main);
+  background: #FAF8F4;
+  border: var(--border-input);
   border-radius: var(--radius-m);
   padding: 12px;
   text-align: center;
   cursor: pointer;
-  box-shadow: 0 3px 0 var(--mochi-ink);
+  box-shadow: var(--shadow-secondary);
   transition: all var(--dur-base) var(--ease-mochi);
   color: var(--mochi-ink-sub);
 }
 
 .payer-toggle-btn.a.selected {
   background: var(--partner-a-tag);
+  border-color: rgba(126, 168, 214, 0.6);
   color: var(--mochi-ink);
-  box-shadow: 0 4px 0 var(--mochi-ink);
-  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(126, 168, 214, 0.25);
+  transform: translateY(-1px);
 }
 
 .payer-toggle-btn.b.selected {
   background: var(--partner-b-tag);
+  border-color: rgba(214, 138, 134, 0.6);
   color: var(--mochi-ink);
-  box-shadow: 0 4px 0 var(--mochi-ink);
-  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(214, 138, 134, 0.25);
+  transform: translateY(-1px);
 }
 
 /* カテゴリ選択グリッド */
@@ -1314,8 +1397,8 @@ body {
 }
 
 .category-option-btn {
-  background: var(--mochi-milk);
-  border: var(--line-main);
+  background: #FAF8F4;
+  border: var(--border-card);
   border-radius: var(--radius-s);
   padding: 8px 4px;
   display: flex;
@@ -1323,22 +1406,24 @@ body {
   align-items: center;
   gap: 4px;
   cursor: pointer;
-  box-shadow: 0 2px 0 var(--mochi-ink);
+  box-shadow: var(--shadow-secondary);
   transition: all var(--dur-base) var(--ease-mochi);
 }
 
 .category-option-btn.selected {
   background: var(--mochi-yaki);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 0 var(--mochi-ink);
+  border-color: transparent;
+  color: #1A1A1A;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(242, 179, 76, 0.35);
 }
 
 /* 比率スライダー */
 .ratio-slider-container {
-  background: var(--mochi-kinako);
-  border: var(--line-main);
+  background: #FAF7F0;
+  border: var(--border-card);
   border-radius: var(--radius-m);
-  padding: 14px;
+  padding: 16px;
 }
 
 .ratio-display-row {
@@ -1350,9 +1435,9 @@ body {
 
 .custom-range-slider {
   width: 100%;
-  height: 10px;
-  background: #FFF;
-  border: var(--line-main);
+  height: 8px;
+  background: #E8E2D4;
+  border: none;
   border-radius: var(--radius-full);
   outline: none;
   cursor: pointer;
@@ -1366,9 +1451,9 @@ body {
   height: 22px;
   border-radius: 50%;
   background: var(--mochi-yaki);
-  border: 2px solid var(--mochi-ink);
+  border: 2px solid #FFFFFF;
   cursor: pointer;
-  box-shadow: 0 2px 0 var(--mochi-ink);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 /* トースト通知 */
@@ -1380,11 +1465,11 @@ body {
   background: var(--mochi-ink);
   color: #FFF;
   padding: 10px 22px;
-  border-radius: 0; /* キャプション帯と同じ直角 */
+  border-radius: var(--radius-full);
   font-family: var(--font-caption);
   font-size: 0.9rem;
   font-weight: 700;
-  box-shadow: 0 6px 0 rgba(26, 26, 26, 0.2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
   opacity: 0;
   pointer-events: none;
   transition: all var(--dur-base) var(--ease-mochi);
@@ -1409,17 +1494,16 @@ body {
 
 /* ========================================================
    SP (スマートフォン) レスポンシブ最適化
-   文字の見切れ防止、フォントサイズ・余白・タブ調整
    ======================================================== */
 @media (max-width: 480px) {
   #app {
-    padding: 0 12px 90px;
+    padding: 0 14px 92px;
   }
 
   .app-header {
-    margin: 0 -12px 10px;
-    padding-left: 14px;
-    padding-right: 14px;
+    margin: 0 -14px 12px;
+    padding-left: 16px;
+    padding-right: 16px;
   }
 
   .brand-title {
@@ -1432,7 +1516,7 @@ body {
   }
 
   .sync-badge {
-    padding: 4px 8px;
+    padding: 5px 10px;
     font-size: 0.72rem;
   }
 
@@ -1443,7 +1527,7 @@ body {
 
   /* ヒーロー精算カード */
   .settlement-hero {
-    padding: 18px 12px 16px;
+    padding: 24px 16px 20px;
   }
 
   .hero-character-wrapper .mochi-dog-svg {
@@ -1453,35 +1537,35 @@ body {
 
   .caption-band {
     font-size: 13px;
-    padding: 4px 12px;
+    padding: 4px 14px;
   }
 
   .settlement-title {
-    font-size: 1.7rem;
+    font-size: 1.85rem;
   }
 
   .settlement-title.even {
-    font-size: 1.35rem;
+    font-size: 1.4rem;
   }
 
   .settlement-title .yen-mark {
-    font-size: 1.2rem;
+    font-size: 1.25rem;
   }
 
   .settlement-subtitle {
-    font-size: 0.8rem;
+    font-size: 0.84rem;
     line-height: 1.4;
   }
 
   /* シーソー */
   .seesaw-container {
-    padding: 12px 8px 10px;
-    margin: 8px 0 14px;
+    padding: 16px 12px 14px;
+    margin: 10px 0 16px;
   }
 
   .partner-pill {
-    font-size: 0.72rem;
-    padding: 2px 8px;
+    font-size: 0.74rem;
+    padding: 3px 8px;
     max-width: 45%;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1491,43 +1575,43 @@ body {
   /* 精算アクションボタン */
   .settlement-actions {
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
   }
 
   .settlement-actions button {
     width: 100%;
-    font-size: 0.88rem;
-    padding: 10px 14px;
+    font-size: 0.9rem;
+    padding: 11px 16px;
   }
 
   /* 3連統計サマリー */
   .stats-row {
-    gap: 6px;
-    margin-bottom: 14px;
+    gap: 8px;
+    margin-bottom: 16px;
   }
 
   .stat-box {
-    padding: 8px 4px;
+    padding: 12px 8px;
     border-radius: var(--radius-s);
   }
 
   .stat-box-title {
-    font-size: 0.68rem;
+    font-size: 0.72rem;
     white-space: nowrap;
   }
 
   .stat-box-num {
-    font-size: 0.88rem;
-    letter-spacing: -0.03em;
+    font-size: 0.95rem;
+    letter-spacing: -0.02em;
     white-space: nowrap;
   }
 
   /* 固定費バナー */
   .fixed-cost-intro-banner {
-    padding: 12px 12px;
+    padding: 14px 14px;
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
+    gap: 10px;
   }
 
   .fixed-cost-intro-banner button {
@@ -1537,25 +1621,25 @@ body {
 
   /* リストカード */
   .expense-card-item {
-    padding: 10px 12px;
+    padding: 12px 14px;
   }
 
   .item-cat-icon {
-    width: 36px;
-    height: 36px;
-    font-size: 1.1rem;
+    width: 38px;
+    height: 38px;
+    font-size: 1.15rem;
   }
 
   .item-title {
-    font-size: 0.88rem;
+    font-size: 0.9rem;
   }
 
   .item-sub-line {
-    font-size: 0.72rem;
+    font-size: 0.74rem;
   }
 
   .item-amount-val {
-    font-size: 1.02rem;
+    font-size: 1.05rem;
   }
 
   /* モーダル */
@@ -1592,14 +1676,14 @@ body {
 
   .category-option-btn {
     padding: 6px 2px;
-    font-size: 0.7rem;
+    font-size: 0.72rem;
   }
 
   /* FAB */
   .mochi-fab {
     bottom: 18px;
-    right: 16px;
-    padding: 12px 18px;
+    right: 18px;
+    padding: 12px 20px;
     font-size: 0.92rem;
   }
 }
