@@ -1,0 +1,387 @@
+import { createClient } from '@supabase/supabase-js';
+
+// カテゴリ定義
+export const CATEGORIES = {
+  food: { name: '食費', icon: '🛒', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
+  dining: { name: '外食', icon: '🍽️', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' },
+  utilities: { name: '水道光熱費', icon: '⚡', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.15)' },
+  daily: { name: '日用品', icon: '🧻', color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.15)' },
+  housing: { name: '家賃・住まい', icon: '🏠', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.15)' },
+  wifi: { name: '通信・ネット', icon: '📶', color: '#6366f1', bg: 'rgba(99, 102, 241, 0.15)' },
+  entertainment: { name: '娯楽・レジャー', icon: '🎬', color: '#ec4899', bg: 'rgba(236, 72, 153, 0.15)' },
+  other: { name: 'その他', icon: '🏷️', color: '#64748b', bg: 'rgba(100, 116, 139, 0.15)' },
+};
+
+// Supabaseテーブルセットアップ用SQL
+export const SUPABASE_SETUP_SQL = `-- ふたりペイ (PairPay) テーブル作成SQL
+-- Supabaseの「SQL Editor」に貼り付けて「Run」を押すだけで完了します！
+
+-- 1. 支出テーブル (expenses)
+create table if not exists public.pairpay_expenses (
+  id text primary key,
+  title text not null,
+  amount numeric not null,
+  paid_by text not null, -- 'A' or 'B'
+  category text not null,
+  date text not null,
+  split_type text default 'default',
+  custom_ratio_a numeric,
+  memo text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- 2. 固定費テーブル (fixed_costs)
+create table if not exists public.pairpay_fixed_costs (
+  id text primary key,
+  title text not null,
+  amount numeric not null,
+  paid_by text not null,
+  category text not null,
+  split_type text default 'default',
+  custom_ratio_a numeric,
+  active boolean default true,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- 3. 設定テーブル (settings)
+create table if not exists public.pairpay_settings (
+  id text primary key,
+  partner_a_name text default 'あなた',
+  partner_b_name text default 'パートナー',
+  default_ratio_a numeric default 50,
+  default_ratio_b numeric default 50,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Row Level Security (RLS) をオフにするか全許可にして2人で共有できるようにします
+alter table public.pairpay_expenses enable row level security;
+alter table public.pairpay_fixed_costs enable row level security;
+alter table public.pairpay_settings enable row level security;
+
+create policy "Allow all access to expenses" on public.pairpay_expenses for all using (true) with check (true);
+create policy "Allow all access to fixed_costs" on public.pairpay_fixed_costs for all using (true) with check (true);
+create policy "Allow all access to settings" on public.pairpay_settings for all using (true) with check (true);
+
+-- リアルタイム配信を有効化
+alter publication supabase_realtime add table public.pairpay_expenses;
+alter publication supabase_realtime add table public.pairpay_fixed_costs;
+alter publication supabase_realtime add table public.pairpay_settings;
+`;
+
+const LOCAL_STORAGE_KEYS = {
+  EXPENSES: 'pairpay_expenses_v1',
+  FIXED_COSTS: 'pairpay_fixed_costs_v1',
+  SETTINGS: 'pairpay_settings_v1',
+  SUPABASE_CONFIG: 'pairpay_supabase_cfg_v1'
+};
+
+export class StorageService {
+  constructor() {
+    this.supabase = null;
+    this.isConnected = false;
+    this.onSyncCallback = null;
+    this.channel = null;
+
+    // 初期設定
+    this.settings = this.loadSettings();
+    this.initSupabaseIfConfigured();
+  }
+
+  setSyncCallback(cb) {
+    this.onSyncCallback = cb;
+  }
+
+  loadSettings() {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.SETTINGS);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.warn('Failed to parse settings from storage', e);
+    }
+    return {
+      partnerAName: 'あなた (A)',
+      partnerBName: 'パートナー (B)',
+      defaultRatioA: 60,
+      defaultRatioB: 40
+    };
+  }
+
+  saveSettings(newSettings) {
+    this.settings = { ...this.settings, ...newSettings };
+    localStorage.setItem(LOCAL_STORAGE_KEYS.SETTINGS, JSON.stringify(this.settings));
+    if (this.supabase) {
+      this.supabase.from('pairpay_settings').upsert({
+        id: 'global_settings',
+        partner_a_name: this.settings.partnerAName,
+        partner_b_name: this.settings.partnerBName,
+        default_ratio_a: this.settings.defaultRatioA,
+        default_ratio_b: this.settings.defaultRatioB,
+        updated_at: new Date().toISOString()
+      }).then();
+    }
+  }
+
+  getSupabaseConfig() {
+    try {
+      const cfg = localStorage.getItem(LOCAL_STORAGE_KEYS.SUPABASE_CONFIG);
+      return cfg ? JSON.parse(cfg) : { url: '', key: '' };
+    } catch {
+      return { url: '', key: '' };
+    }
+  }
+
+  async saveSupabaseConfig(url, key) {
+    localStorage.setItem(LOCAL_STORAGE_KEYS.SUPABASE_CONFIG, JSON.stringify({ url, key }));
+    return await this.initSupabase(url, key);
+  }
+
+  async initSupabaseIfConfigured() {
+    const { url, key } = this.getSupabaseConfig();
+    if (url && key) {
+      await this.initSupabase(url, key);
+    }
+  }
+
+  async initSupabase(url, key) {
+    if (!url || !key) {
+      this.supabase = null;
+      this.isConnected = false;
+      return false;
+    }
+    try {
+      this.supabase = createClient(url, key);
+      // 接続テスト
+      const { data, error } = await this.supabase.from('pairpay_expenses').select('id').limit(1);
+      if (error && error.code !== 'PGRST116') {
+        console.warn('Supabase test select error', error);
+      }
+      this.isConnected = true;
+      this.setupRealtimeSubscription();
+      return true;
+    } catch (err) {
+      console.error('Supabase init failed', err);
+      this.isConnected = false;
+      return false;
+    }
+  }
+
+  setupRealtimeSubscription() {
+    if (!this.supabase) return;
+    if (this.channel) {
+      this.supabase.removeChannel(this.channel);
+    }
+    this.channel = this.supabase
+      .channel('pairpay_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pairpay_expenses' }, () => {
+        if (this.onSyncCallback) this.onSyncCallback('expenses');
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pairpay_fixed_costs' }, () => {
+        if (this.onSyncCallback) this.onSyncCallback('fixed_costs');
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pairpay_settings' }, () => {
+        if (this.onSyncCallback) this.onSyncCallback('settings');
+      })
+      .subscribe();
+  }
+
+  // 支出 (Expenses)
+  async getExpenses() {
+    if (this.isConnected && this.supabase) {
+      try {
+        const { data, error } = await this.supabase
+          .from('pairpay_expenses')
+          .select('*')
+          .order('date', { ascending: false });
+        if (!error && data) {
+          const mapped = data.map(d => ({
+            id: d.id,
+            title: d.title,
+            amount: Number(d.amount),
+            paidBy: d.paid_by,
+            category: d.category,
+            date: d.date,
+            splitType: d.split_type,
+            customRatioA: d.custom_ratio_a != null ? Number(d.custom_ratio_a) : null,
+            memo: d.memo
+          }));
+          localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify(mapped));
+          return mapped;
+        }
+      } catch (e) {
+        console.warn('Supabase getExpenses failed, using local cache', e);
+      }
+    }
+    // Fallback to local
+    try {
+      const local = localStorage.getItem(LOCAL_STORAGE_KEYS.EXPENSES);
+      return local ? JSON.parse(local) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async saveExpense(expense) {
+    // 1. ローカル更新
+    const current = await this.getExpenses();
+    const idx = current.findIndex(e => e.id === expense.id);
+    let updated;
+    if (idx >= 0) {
+      updated = [...current];
+      updated[idx] = expense;
+    } else {
+      updated = [expense, ...current];
+    }
+    localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify(updated));
+
+    // 2. クラウド同期
+    if (this.isConnected && this.supabase) {
+      try {
+        await this.supabase.from('pairpay_expenses').upsert({
+          id: expense.id,
+          title: expense.title,
+          amount: expense.amount,
+          paid_by: expense.paidBy,
+          category: expense.category,
+          date: expense.date,
+          split_type: expense.splitType || 'default',
+          custom_ratio_a: expense.customRatioA,
+          memo: expense.memo || ''
+        });
+      } catch (e) {
+        console.error('Supabase saveExpense error', e);
+      }
+    }
+    return updated;
+  }
+
+  async deleteExpense(id) {
+    const current = await this.getExpenses();
+    const updated = current.filter(e => e.id !== id);
+    localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify(updated));
+
+    if (this.isConnected && this.supabase) {
+      try {
+        await this.supabase.from('pairpay_expenses').delete().eq('id', id);
+      } catch (e) {
+        console.error('Supabase deleteExpense error', e);
+      }
+    }
+    return updated;
+  }
+
+  // 固定費 (Fixed Costs)
+  async getFixedCosts() {
+    if (this.isConnected && this.supabase) {
+      try {
+        const { data, error } = await this.supabase.from('pairpay_fixed_costs').select('*');
+        if (!error && data) {
+          const mapped = data.map(d => ({
+            id: d.id,
+            title: d.title,
+            amount: Number(d.amount),
+            paidBy: d.paid_by,
+            category: d.category,
+            splitType: d.split_type,
+            customRatioA: d.custom_ratio_a != null ? Number(d.custom_ratio_a) : null,
+            active: d.active
+          }));
+          localStorage.setItem(LOCAL_STORAGE_KEYS.FIXED_COSTS, JSON.stringify(mapped));
+          return mapped;
+        }
+      } catch (e) {
+        console.warn('Supabase getFixedCosts failed, using local cache', e);
+      }
+    }
+    try {
+      const local = localStorage.getItem(LOCAL_STORAGE_KEYS.FIXED_COSTS);
+      return local ? JSON.parse(local) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async saveFixedCost(cost) {
+    const current = await this.getFixedCosts();
+    const idx = current.findIndex(c => c.id === cost.id);
+    let updated;
+    if (idx >= 0) {
+      updated = [...current];
+      updated[idx] = cost;
+    } else {
+      updated = [...current, cost];
+    }
+    localStorage.setItem(LOCAL_STORAGE_KEYS.FIXED_COSTS, JSON.stringify(updated));
+
+    if (this.isConnected && this.supabase) {
+      try {
+        await this.supabase.from('pairpay_fixed_costs').upsert({
+          id: cost.id,
+          title: cost.title,
+          amount: cost.amount,
+          paid_by: cost.paidBy,
+          category: cost.category,
+          split_type: cost.splitType || 'default',
+          custom_ratio_a: cost.customRatioA,
+          active: cost.active !== false
+        });
+      } catch (e) {
+        console.error('Supabase saveFixedCost error', e);
+      }
+    }
+    return updated;
+  }
+
+  async deleteFixedCost(id) {
+    const current = await this.getFixedCosts();
+    const updated = current.filter(c => c.id !== id);
+    localStorage.setItem(LOCAL_STORAGE_KEYS.FIXED_COSTS, JSON.stringify(updated));
+
+    if (this.isConnected && this.supabase) {
+      try {
+        await this.supabase.from('pairpay_fixed_costs').delete().eq('id', id);
+      } catch (e) {
+        console.error('Supabase deleteFixedCost error', e);
+      }
+    }
+    return updated;
+  }
+
+  // デモデータ生成
+  async loadDemoData(currentMonth) {
+    const demoFixed = [
+      { id: 'fx_1', title: '賃貸マンション家賃', amount: 96000, paidBy: 'A', category: 'housing', splitType: 'default', active: true },
+      { id: 'fx_2', title: '光回線インターネット', amount: 5200, paidBy: 'B', category: 'wifi', splitType: 'half', active: true },
+      { id: 'fx_3', title: '動画・音楽サブスク共有', amount: 1980, paidBy: 'B', category: 'entertainment', splitType: 'half', active: true },
+    ];
+
+    const demoExpenses = [
+      { id: 'exp_1', title: 'スーパーで週末食材まとめ買い', amount: 8420, paidBy: 'A', category: 'food', date: `${currentMonth}-03`, splitType: 'default' },
+      { id: 'exp_2', title: 'ドラッグストアで日用品', amount: 3280, paidBy: 'B', category: 'daily', date: `${currentMonth}-06`, splitType: 'default' },
+      { id: 'exp_3', title: '東京電力（電気代検針分）', amount: 7650, paidBy: 'A', category: 'utilities', date: `${currentMonth}-10`, splitType: 'default' },
+      { id: 'exp_4', title: '東京ガス（ガス代）', amount: 4890, paidBy: 'A', category: 'utilities', date: `${currentMonth}-11`, splitType: 'default' },
+      { id: 'exp_5', title: '記念日ディナー外食', amount: 12400, paidBy: 'B', category: 'dining', date: `${currentMonth}-14`, splitType: 'half' },
+      { id: 'exp_6', title: '無印良品 収納ケース等', amount: 4500, paidBy: 'B', category: 'daily', date: `${currentMonth}-16`, splitType: 'default' },
+    ];
+
+    for (const f of demoFixed) {
+      await this.saveFixedCost(f);
+    }
+    for (const e of demoExpenses) {
+      await this.saveExpense(e);
+    }
+  }
+
+  // 全消去
+  async clearAll() {
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.EXPENSES);
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.FIXED_COSTS);
+    if (this.isConnected && this.supabase) {
+      try {
+        await this.supabase.from('pairpay_expenses').delete().neq('id', '___');
+        await this.supabase.from('pairpay_fixed_costs').delete().neq('id', '___');
+      } catch (e) {
+        console.error('Supabase clear error', e);
+      }
+    }
+  }
+}
