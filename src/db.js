@@ -12,16 +12,15 @@ export const CATEGORIES = {
   other: { name: 'その他', icon: '🏷️', color: '#64748b', bg: 'rgba(100, 116, 139, 0.15)' },
 };
 
-// Supabaseテーブルセットアップ用SQL
-export const SUPABASE_SETUP_SQL = `-- ふたりペイ (PairPay) テーブル作成SQL
+// Supabaseテーブルセットアップ用SQL (start_month, end_month 追加)
+export const SUPABASE_SETUP_SQL = `-- もちもち生活費 (PairPay) テーブル作成SQL
 -- Supabaseの「SQL Editor」に貼り付けて「Run」を押すだけで完了します！
 
--- 1. 支出テーブル (expenses)
 create table if not exists public.pairpay_expenses (
   id text primary key,
   title text not null,
   amount numeric not null,
-  paid_by text not null, -- 'A' or 'B'
+  paid_by text not null,
   category text not null,
   date text not null,
   split_type text default 'default',
@@ -30,7 +29,6 @@ create table if not exists public.pairpay_expenses (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 2. 固定費テーブル (fixed_costs)
 create table if not exists public.pairpay_fixed_costs (
   id text primary key,
   title text not null,
@@ -39,21 +37,25 @@ create table if not exists public.pairpay_fixed_costs (
   category text not null,
   split_type text default 'default',
   custom_ratio_a numeric,
+  start_month text, -- 登録月 (YYYY-MM)
+  end_month text,   -- 終了月 (YYYY-MM)
   active boolean default true,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 3. 設定テーブル (settings)
 create table if not exists public.pairpay_settings (
   id text primary key,
   partner_a_name text default 'あなた',
   partner_b_name text default 'パートナー',
-  default_ratio_a numeric default 50,
-  default_ratio_b numeric default 50,
+  default_ratio_a numeric default 60,
+  default_ratio_b numeric default 40,
+  line_token text,
+  line_to text,
+  reminder_day numeric default 25,
+  line_auto_notify boolean default true,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- Row Level Security (RLS) をオフにするか全許可にして2人で共有できるようにします
 alter table public.pairpay_expenses enable row level security;
 alter table public.pairpay_fixed_costs enable row level security;
 alter table public.pairpay_settings enable row level security;
@@ -62,7 +64,6 @@ create policy "Allow all access to expenses" on public.pairpay_expenses for all 
 create policy "Allow all access to fixed_costs" on public.pairpay_fixed_costs for all using (true) with check (true);
 create policy "Allow all access to settings" on public.pairpay_settings for all using (true) with check (true);
 
--- リアルタイム配信を有効化
 alter publication supabase_realtime add table public.pairpay_expenses;
 alter publication supabase_realtime add table public.pairpay_fixed_costs;
 alter publication supabase_realtime add table public.pairpay_settings;
@@ -82,7 +83,6 @@ export class StorageService {
     this.onSyncCallback = null;
     this.channel = null;
 
-    // 初期設定
     this.settings = this.loadSettings();
     this.initSupabaseIfConfigured();
   }
@@ -96,13 +96,17 @@ export class StorageService {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.SETTINGS);
       if (saved) return JSON.parse(saved);
     } catch (e) {
-      console.warn('Failed to parse settings from storage', e);
+      console.warn('Failed to parse settings', e);
     }
     return {
       partnerAName: 'あなた (A)',
       partnerBName: 'パートナー (B)',
       defaultRatioA: 60,
-      defaultRatioB: 40
+      defaultRatioB: 40,
+      lineToken: '',
+      lineTo: '',
+      reminderDay: 25,
+      lineAutoNotify: true
     };
   }
 
@@ -116,6 +120,10 @@ export class StorageService {
         partner_b_name: this.settings.partnerBName,
         default_ratio_a: this.settings.defaultRatioA,
         default_ratio_b: this.settings.defaultRatioB,
+        line_token: this.settings.lineToken || '',
+        line_to: this.settings.lineTo || '',
+        reminder_day: this.settings.reminderDay || 25,
+        line_auto_notify: this.settings.lineAutoNotify !== false,
         updated_at: new Date().toISOString()
       }).then();
     }
@@ -150,8 +158,7 @@ export class StorageService {
     }
     try {
       this.supabase = createClient(url, key);
-      // 接続テスト
-      const { data, error } = await this.supabase.from('pairpay_expenses').select('id').limit(1);
+      const { error } = await this.supabase.from('pairpay_expenses').select('id').limit(1);
       if (error && error.code !== 'PGRST116') {
         console.warn('Supabase test select error', error);
       }
@@ -208,10 +215,9 @@ export class StorageService {
           return mapped;
         }
       } catch (e) {
-        console.warn('Supabase getExpenses failed, using local cache', e);
+        console.warn('Supabase getExpenses failed', e);
       }
     }
-    // Fallback to local
     try {
       const local = localStorage.getItem(LOCAL_STORAGE_KEYS.EXPENSES);
       return local ? JSON.parse(local) : [];
@@ -221,7 +227,6 @@ export class StorageService {
   }
 
   async saveExpense(expense) {
-    // 1. ローカル更新
     const current = await this.getExpenses();
     const idx = current.findIndex(e => e.id === expense.id);
     let updated;
@@ -233,7 +238,6 @@ export class StorageService {
     }
     localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify(updated));
 
-    // 2. クラウド同期
     if (this.isConnected && this.supabase) {
       try {
         await this.supabase.from('pairpay_expenses').upsert({
@@ -283,13 +287,15 @@ export class StorageService {
             category: d.category,
             splitType: d.split_type,
             customRatioA: d.custom_ratio_a != null ? Number(d.custom_ratio_a) : null,
+            startMonth: d.start_month || '2026-01',
+            endMonth: d.end_month || null,
             active: d.active
           }));
           localStorage.setItem(LOCAL_STORAGE_KEYS.FIXED_COSTS, JSON.stringify(mapped));
           return mapped;
         }
       } catch (e) {
-        console.warn('Supabase getFixedCosts failed, using local cache', e);
+        console.warn('Supabase getFixedCosts failed', e);
       }
     }
     try {
@@ -322,6 +328,8 @@ export class StorageService {
           category: cost.category,
           split_type: cost.splitType || 'default',
           custom_ratio_a: cost.customRatioA,
+          start_month: cost.startMonth || '2026-01',
+          end_month: cost.endMonth || null,
           active: cost.active !== false
         });
       } catch (e) {
@@ -331,27 +339,43 @@ export class StorageService {
     return updated;
   }
 
-  async deleteFixedCost(id) {
+  /**
+   * 固定費の削除
+   * 【フィードバック反映】
+   * 登録月より後の月で削除された場合は、その月以降のみ除外されるよう endMonth を設定。
+   * 登録月に削除された場合はレコード自体を削除。
+   */
+  async deleteFixedCost(id, fromMonth = null) {
     const current = await this.getFixedCosts();
-    const updated = current.filter(c => c.id !== id);
-    localStorage.setItem(LOCAL_STORAGE_KEYS.FIXED_COSTS, JSON.stringify(updated));
+    const target = current.find(c => c.id === id);
 
-    if (this.isConnected && this.supabase) {
-      try {
-        await this.supabase.from('pairpay_fixed_costs').delete().eq('id', id);
-      } catch (e) {
-        console.error('Supabase deleteFixedCost error', e);
+    let updated;
+    if (target && fromMonth && target.startMonth && target.startMonth < fromMonth) {
+      // 過去の月には残し、当月(fromMonth)以降のみ終了扱いにする
+      target.endMonth = fromMonth;
+      return await this.saveFixedCost(target);
+    } else {
+      // 登録月に削除、または完全削除
+      updated = current.filter(c => c.id !== id);
+      localStorage.setItem(LOCAL_STORAGE_KEYS.FIXED_COSTS, JSON.stringify(updated));
+
+      if (this.isConnected && this.supabase) {
+        try {
+          await this.supabase.from('pairpay_fixed_costs').delete().eq('id', id);
+        } catch (e) {
+          console.error('Supabase deleteFixedCost error', e);
+        }
       }
+      return updated;
     }
-    return updated;
   }
 
   // デモデータ生成
   async loadDemoData(currentMonth) {
     const demoFixed = [
-      { id: 'fx_1', title: '賃貸マンション家賃', amount: 96000, paidBy: 'A', category: 'housing', splitType: 'default', active: true },
-      { id: 'fx_2', title: '光回線インターネット', amount: 5200, paidBy: 'B', category: 'wifi', splitType: 'half', active: true },
-      { id: 'fx_3', title: '動画・音楽サブスク共有', amount: 1980, paidBy: 'B', category: 'entertainment', splitType: 'half', active: true },
+      { id: 'fx_1', title: '賃貸マンション家賃', amount: 96000, paidBy: 'A', category: 'housing', splitType: 'default', startMonth: currentMonth, endMonth: null, active: true },
+      { id: 'fx_2', title: '光回線インターネット', amount: 5200, paidBy: 'B', category: 'wifi', splitType: 'half', startMonth: currentMonth, endMonth: null, active: true },
+      { id: 'fx_3', title: '動画・音楽サブスク共有', amount: 1980, paidBy: 'B', category: 'entertainment', splitType: 'half', startMonth: currentMonth, endMonth: null, active: true },
     ];
 
     const demoExpenses = [
@@ -371,7 +395,6 @@ export class StorageService {
     }
   }
 
-  // 全消去
   async clearAll() {
     localStorage.removeItem(LOCAL_STORAGE_KEYS.EXPENSES);
     localStorage.removeItem(LOCAL_STORAGE_KEYS.FIXED_COSTS);

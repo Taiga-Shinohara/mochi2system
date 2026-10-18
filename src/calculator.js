@@ -4,7 +4,6 @@
  */
 
 export function calculateSettlement({ expenses, fixedCosts, settings, currentMonth }) {
-  // settings: { partnerAName, partnerBName, defaultRatioA (例 60), defaultRatioB (40) }
   const ratioA = (settings.defaultRatioA || 50) / 100;
   const ratioB = (settings.defaultRatioB || 50) / 100;
 
@@ -12,7 +11,14 @@ export function calculateSettlement({ expenses, fixedCosts, settings, currentMon
   const monthExpenses = expenses.filter(e => e.date.startsWith(currentMonth));
   
   // 今月有効な固定費
-  const activeFixedCosts = fixedCosts.filter(f => f.active);
+  // 【フィードバック反映】登録月(startMonth)以降、かつ終了月(endMonth)より前の月のみ反映
+  const activeFixedCosts = fixedCosts.filter(f => {
+    if (f.active === false) return false;
+    const start = f.startMonth || '2000-01';
+    if (currentMonth < start) return false;
+    if (f.endMonth && currentMonth >= f.endMonth) return false;
+    return true;
+  });
 
   // 全アイテムを結合（固定費は当月仮想アイテムとして結合）
   const allItems = [
@@ -21,13 +27,15 @@ export function calculateSettlement({ expenses, fixedCosts, settings, currentMon
       id: `fixed_${f.id}`,
       title: f.title,
       amount: Number(f.amount),
-      paidBy: f.paidBy, // 'A' or 'B'
+      paidBy: f.paidBy,
       category: f.category || 'housing',
       date: `${currentMonth}-01`,
-      splitType: f.splitType || 'default', // 'default', 'half', 'fullA', 'fullB', 'custom'
+      splitType: f.splitType || 'default',
       customRatioA: f.customRatioA,
       isFixed: true,
-      fixedCostId: f.id
+      fixedCostId: f.id,
+      startMonth: f.startMonth,
+      endMonth: f.endMonth
     }))
   ];
 
@@ -41,7 +49,6 @@ export function calculateSettlement({ expenses, fixedCosts, settings, currentMon
   let totalOwedA = 0;
   let totalOwedB = 0;
 
-  // カテゴリ別集計
   const categoryTotals = {};
 
   for (const item of allItems) {
@@ -54,14 +61,12 @@ export function calculateSettlement({ expenses, fixedCosts, settings, currentMon
       variableAmount += amt;
     }
 
-    // 支払者への加算
     if (item.paidBy === 'A') {
       totalPaidA += amt;
     } else {
       totalPaidB += amt;
     }
 
-    // アイテムごとの按分比率を決定
     let itemRatioA = ratioA;
     let itemRatioB = ratioB;
 
@@ -85,33 +90,20 @@ export function calculateSettlement({ expenses, fixedCosts, settings, currentMon
     totalOwedA += owedA;
     totalOwedB += owedB;
 
-    // カテゴリ集計
     const cat = item.category || 'other';
     categoryTotals[cat] = (categoryTotals[cat] || 0) + amt;
   }
 
-  // 精算の差額（ネット残高）
-  // balanceA > 0 : Aが払いすぎ（受け取る権利）
-  // balanceA < 0 : Aが不足（支払う義務）
   const balanceA = Math.round(totalPaidA - totalOwedA);
   const balanceB = Math.round(totalPaidB - totalOwedB);
 
-  // シーソー／天秤メーターの針位置（0% 〜 100%）
-  // 50% = 完全にイーブン
-  // < 50% = Aが多く立て替えている（メーターが左/A側に傾く）
-  // > 50% = Bが多く立て替えている（メーターが右/B側に傾く）
   let needlePosition = 50;
   if (totalAmount > 0) {
-    // 負担額に対する差額の割合（最大±50%振れ幅）
-    // 例: 最大でも全額立て替え時に0% or 100%にクランプ
     const diffRatio = (balanceB - balanceA) / (totalAmount || 1);
-    // diffRatioが-1のときAが全額立替 -> needle = 15%
-    // diffRatioが+1のときBが全額立替 -> needle = 85%
     needlePosition = Math.max(10, Math.min(90, 50 + diffRatio * 35));
   }
 
-  // 精算ステータス
-  let status = 'even'; // 'even', 'b_to_a', 'a_to_b'
+  let status = 'even';
   let transferAmount = 0;
   let payerName = '';
   let receiverName = '';
@@ -154,23 +146,23 @@ export function calculateSettlement({ expenses, fixedCosts, settings, currentMon
     receiverKey,
     categoryTotals,
     itemCount: allItems.length,
+    activeFixedCount: activeFixedCosts.length,
     allItems
   };
 }
 
-/**
- * LINEなどに送る精算テキストを生成
- */
 export function generateShareText({ calculation, settings, monthLabel }) {
   const { status, transferAmount, payerName, receiverName, totalAmount, totalPaidA, totalPaidB, fixedAmount, variableAmount } = calculation;
   
   if (status === 'even') {
-    return `【ふたりペイ】${monthLabel}の生活費精算✨\n今月の合計支出は ¥${totalAmount.toLocaleString()} です。\n精算額は ¥0 で、ぴったりイーブンです！🎉`;
+    return `🐾【もちもち生活費】${monthLabel}の精算
+合計支出は ¥${totalAmount.toLocaleString()} です。
+現在はイーブン（精算なし）ですよ。でも幸せならOKです！🐶✨`;
   }
 
-  return `【ふたりペイ】${monthLabel}の生活費精算📱✨
+  return `🐾【もちもち生活費】${monthLabel}の精算
 ━━━━━━━━━━━━━━━
-💰 【${payerName}】から【${receiverName}】へ
+💰【${payerName}】から【${receiverName}】へ
 👉 ¥${transferAmount.toLocaleString()} のお支払い
 ━━━━━━━━━━━━━━━
 📊 今月の内訳
@@ -180,5 +172,5 @@ export function generateShareText({ calculation, settings, monthLabel }) {
 ・${settings.partnerBName}支払済: ¥${totalPaidB.toLocaleString()}
 
 比率: ${settings.partnerAName} ${settings.defaultRatioA}% : ${settings.partnerBName} ${settings.defaultRatioB}%
-精算よろしくね！🙌`;
+精算よろしくね！わかっていますよ🐾`;
 }

@@ -3,6 +3,8 @@ import confetti from 'canvas-confetti';
 import { StorageService, CATEGORIES, SUPABASE_SETUP_SQL } from './db.js';
 import { calculateSettlement, generateShareText } from './calculator.js';
 import { renderMochiDog, renderCaption } from './characters.js';
+import { OcrService } from './ocrService.js';
+import { LineService } from './lineService.js';
 
 function getTodayString() {
   const d = new Date();
@@ -23,12 +25,14 @@ class MochiBudgetApp {
   constructor() {
     this.storage = new StorageService();
     this.currentMonth = getCurrentMonthString();
-    this.activeTab = 'all'; // 'all', 'variable', 'fixed', 'charts'
+    this.activeTab = 'all';
     this.selectedCategoryFilter = 'all';
 
     this.expenses = [];
     this.fixedCosts = [];
     this.settings = this.storage.settings;
+
+    this.lineService = new LineService(() => this.settings);
 
     this.init();
   }
@@ -50,6 +54,7 @@ class MochiBudgetApp {
 
     this.render();
     this.attachEventListeners();
+    this.checkReminder();
   }
 
   async loadData() {
@@ -90,6 +95,28 @@ class MochiBudgetApp {
     return `${y}年${parseInt(m, 10)}月`;
   }
 
+  // リマインド日の自動チェック
+  checkReminder() {
+    const today = new Date();
+    const reminderDay = Number(this.settings.reminderDay) || 25;
+    const currentDay = today.getDate();
+
+    // 当日の場合、かつ本日まだ通知していない場合に送信
+    if (currentDay === reminderDay && this.lineService.isConfigured()) {
+      const lastSentKey = `mochi_reminder_${this.currentMonth}`;
+      if (!localStorage.getItem(lastSentKey)) {
+        const calc = calculateSettlement({
+          expenses: this.expenses,
+          fixedCosts: this.fixedCosts,
+          settings: this.settings,
+          currentMonth: this.currentMonth
+        });
+        this.lineService.sendSettlementReminder(calc, this.settings, this.formatMonthDisplay(this.currentMonth));
+        localStorage.setItem(lastSentKey, 'true');
+      }
+    }
+  }
+
   render() {
     const appEl = document.getElementById('app');
     if (!appEl) return;
@@ -103,8 +130,9 @@ class MochiBudgetApp {
 
     const isConnected = this.storage.isConnected;
     const { partnerAName, partnerBName, defaultRatioA, defaultRatioB } = this.settings;
+    const actualCurrentMonth = getCurrentMonthString();
+    const isViewingOtherMonth = this.currentMonth !== actualCurrentMonth;
 
-    // フィルタリング
     let displayedItems = calc.allItems;
     if (this.activeTab === 'variable') {
       displayedItems = displayedItems.filter(i => !i.isFixed);
@@ -116,23 +144,28 @@ class MochiBudgetApp {
       displayedItems = displayedItems.filter(i => i.category === this.selectedCategoryFilter);
     }
 
-    // もちもち犬のポーズとセリフの決定
-    let dogPose = 'tilt';
+    // 犬のポーズ決定
+    let dogPose = 'calm';
     let captionText = 'わかっていますよ';
 
     if (calc.status === 'even') {
       dogPose = 'smile';
       captionText = 'でも幸せならOKです';
-    } else if (calc.transferAmount > 30000) {
-      dogPose = 'tilt';
-      captionText = 'あとまだ24時間もある';
+    } else if (calc.transferAmount > 40000) {
+      dogPose = 'panic';
+      captionText = 'あと30分…あと30分…';
+    } else if (calc.transferAmount > 20000) {
+      dogPose = 'sad';
+      captionText = '世知辛い';
+    } else {
+      dogPose = 'calm';
+      captionText = 'わかっていますよ';
     }
 
     appEl.innerHTML = `
-      <!-- ヘッダー -->
       <header class="app-header">
         <div class="brand" id="btnLogo">
-          <img src="/icon.svg" class="brand-icon" alt="もちもち犬" />
+          <img src="/characters/mochi-smile.png" class="brand-icon" alt="もちもち犬" />
           <span class="brand-title">もちもち生活費</span>
         </div>
         <div class="header-actions">
@@ -140,7 +173,7 @@ class MochiBudgetApp {
             <span class="sync-dot ${isConnected ? 'connected' : ''}"></span>
             <span>${isConnected ? '同期中' : '端末保存'}</span>
           </button>
-          <button class="icon-btn" id="btnOpenSettings" title="設定・比率">
+          <button class="icon-btn" id="btnOpenSettings" title="設定・比率・LINE">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="3"/>
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -151,27 +184,32 @@ class MochiBudgetApp {
 
       <!-- 月ナビゲーション -->
       <div class="month-nav-container">
-        <div class="month-selector">
-          <button class="month-btn" id="btnPrevMonth">◀</button>
-          <span class="current-month-label" id="btnCurrentMonth">${this.formatMonthDisplay(this.currentMonth)}</span>
-          <button class="month-btn" id="btnNextMonth">▶</button>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div class="month-selector">
+            <button class="month-btn" id="btnPrevMonth">◀</button>
+            <span class="current-month-label">${this.formatMonthDisplay(this.currentMonth)}</span>
+            <button class="month-btn" id="btnNextMonth">▶</button>
+          </div>
+          <!-- 【フィードバック1】当月じゃない時のみ表示される「現在の月に戻る」ボタン -->
+          ${isViewingOtherMonth ? `
+            <button class="btn-secondary" id="btnReturnToCurrentMonth" style="padding: 4px 12px; font-size: 0.78rem; border-radius: var(--radius-full); box-shadow: 0 2px 0 var(--mochi-ink);">
+              今月に戻る 📅
+            </button>
+          ` : ''}
         </div>
         <div class="quick-stats-badge">
           比率: ${partnerAName} ${defaultRatioA}% : ${partnerBName} ${defaultRatioB}%
         </div>
       </div>
 
-      <!-- メインエリア -->
       <main>
-        <!-- もちもち犬 ヒーロー精算カード -->
+        <!-- ヒーロー精算カード -->
         <section class="mochi-card settlement-hero">
-          <!-- もちもち犬キャラクター ＆ 黒帯キャプション -->
           <div class="hero-character-wrapper">
-            ${renderMochiDog(dogPose, 130, 'mochi-float')}
+            ${renderMochiDog(dogPose, 140, 'mochi-float')}
             ${renderCaption(captionText)}
           </div>
 
-          <!-- 精算金額ボックス -->
           <div class="settlement-amount-box">
             ${calc.status === 'even' ? `
               <div class="settlement-subtitle">今月の精算はぴったりです</div>
@@ -189,27 +227,19 @@ class MochiBudgetApp {
             `}
           </div>
 
-          <!-- もちもちシーソーメーター -->
+          <!-- シーソーメーター（添付のイラストをミニサイズで配置） -->
           <div class="seesaw-container">
             <div class="seesaw-partners-row">
-              <span class="partner-pill a">
-                <span>🐾 ${partnerAName}</span>
-              </span>
-              <span style="font-size: 0.78rem; font-weight: 700; color: var(--mochi-ink-sub);">
-                精算シーソー
-              </span>
-              <span class="partner-pill b">
-                <span>🐾 ${partnerBName}</span>
-              </span>
+              <span class="partner-pill a">🐾 ${partnerAName}</span>
+              <span style="font-size: 0.78rem; font-weight: 700; color: var(--mochi-ink-sub);">精算シーソー</span>
+              <span class="partner-pill b">🐾 ${partnerBName}</span>
             </div>
 
-            <!-- シーソーボード -->
             <div class="seesaw-board">
               <div class="seesaw-center-line"></div>
               <div class="seesaw-fulcrum"></div>
-              <!-- シーソーの上に乗るミニもちもち犬 -->
               <div class="seesaw-indicator-dog" style="left: ${calc.needlePosition}%;">
-                ${renderMochiDog('round', 38)}
+                <img src="/characters/mochi-smile.png" style="width: 38px; height: 38px; object-fit: contain;" alt="dog" />
               </div>
             </div>
 
@@ -220,7 +250,7 @@ class MochiBudgetApp {
             </div>
           </div>
 
-          <!-- 2人の状況（デュアルカード） -->
+          <!-- 2人の状況 -->
           <div class="dual-status-grid">
             <div class="person-card a">
               <div class="person-header">
@@ -247,7 +277,7 @@ class MochiBudgetApp {
             </div>
           </div>
 
-          <!-- ボタン群 -->
+          <!-- アクションボタン -->
           <div class="settlement-actions">
             <button class="btn-primary" id="btnShareLine">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -277,7 +307,7 @@ class MochiBudgetApp {
           </div>
         </section>
 
-        <!-- タブバー -->
+        <!-- タブ -->
         <nav class="mochi-tabs">
           <button class="mochi-tab ${this.activeTab === 'all' ? 'active' : ''}" data-tab="all">
             <span>すべて</span>
@@ -288,7 +318,7 @@ class MochiBudgetApp {
           </button>
           <button class="mochi-tab ${this.activeTab === 'fixed' ? 'active' : ''}" data-tab="fixed">
             <span>固定費</span>
-            <span class="badge">${this.fixedCosts.filter(f => f.active).length}</span>
+            <span class="badge">${calc.activeFixedCount}</span>
           </button>
           <button class="mochi-tab ${this.activeTab === 'charts' ? 'active' : ''}" data-tab="charts">
             <span>内訳</span>
@@ -298,8 +328,8 @@ class MochiBudgetApp {
         ${this.activeTab === 'fixed' ? `
           <div class="fixed-cost-intro-banner">
             <div>
-              <div style="font-weight: 900; font-size: 0.95rem;">毎月の固定費</div>
-              <div style="font-size: 0.78rem; color: var(--mochi-ink-sub);">家賃や通信費など毎月自動で合算されます</div>
+              <div style="font-weight: 900; font-size: 0.95rem;">今月の固定費（${this.formatMonthDisplay(this.currentMonth)}）</div>
+              <div style="font-size: 0.78rem; color: var(--mochi-ink-sub);">登録した月以降のみ自動で反映されます</div>
             </div>
             <button class="btn-secondary" id="btnAddFixedCost" style="padding: 8px 14px; font-size: 0.85rem;">
               + 固定費を追加
@@ -308,14 +338,13 @@ class MochiBudgetApp {
         ` : ''}
 
         ${this.activeTab === 'charts' ? `
-          <!-- 内訳グラフ -->
           <section class="mochi-card" style="padding: 20px;">
             <div style="font-weight: 900; font-size: 1.05rem; margin-bottom: 16px;">
               📊 ${this.formatMonthDisplay(this.currentMonth)} カテゴリ別
             </div>
             ${Object.keys(calc.categoryTotals).length === 0 ? `
               <div class="empty-mochi-box">
-                ${renderMochiDog('calm', 80)}
+                ${renderMochiDog('calm', 90)}
                 <div style="font-size: 0.9rem; font-weight: 700; color: var(--mochi-ink-sub);">データがまだありませんよ</div>
               </div>
             ` : Object.entries(calc.categoryTotals)
@@ -337,7 +366,6 @@ class MochiBudgetApp {
                 }).join('')}
           </section>
         ` : `
-          <!-- カテゴリフィルター -->
           <div class="category-filter-bar">
             <button class="mochi-chip ${this.selectedCategoryFilter === 'all' ? 'active' : ''}" data-cat="all">すべて</button>
             ${Object.entries(CATEGORIES).map(([key, cat]) => `
@@ -347,11 +375,10 @@ class MochiBudgetApp {
             `).join('')}
           </div>
 
-          <!-- 支出リスト -->
           <section class="expense-items-list">
             ${displayedItems.length === 0 ? `
               <div class="empty-mochi-box">
-                ${renderMochiDog('calm', 90)}
+                ${renderMochiDog('calm', 100)}
                 ${renderCaption('データはまだないです')}
                 <div style="font-size: 0.85rem; color: var(--mochi-ink-sub); margin-top: 6px;">
                   右下の「＋ 記録する」からのんびり登録してくださいね
@@ -398,16 +425,12 @@ class MochiBudgetApp {
         `}
       </main>
 
-      <!-- FAB 支出記録ボタン -->
       <button class="mochi-fab" id="btnOpenExpenseModal">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         <span>記録する</span>
       </button>
 
-      <!-- トースト通知 -->
       <div id="toastNotification" class="toast"></div>
-
-      <!-- モーダル格納用コンテナ -->
       <div id="modalContainer"></div>
     `;
   }
@@ -422,10 +445,13 @@ class MochiBudgetApp {
 
     appEl.querySelector('#btnPrevMonth')?.addEventListener('click', () => this.changeMonth(-1));
     appEl.querySelector('#btnNextMonth')?.addEventListener('click', () => this.changeMonth(1));
-    appEl.querySelector('#btnCurrentMonth')?.addEventListener('click', () => {
+    
+    // 【フィードバック1】現在の月に戻るボタンのクリックイベント
+    appEl.querySelector('#btnReturnToCurrentMonth')?.addEventListener('click', () => {
       this.currentMonth = getCurrentMonthString();
       this.render();
       this.attachEventListeners();
+      this.showToast('今月に戻りましたよ 📅');
     });
 
     appEl.querySelectorAll('.mochi-tab').forEach(btn => {
@@ -476,7 +502,7 @@ class MochiBudgetApp {
     });
   }
 
-  // 支出追加・編集モーダル
+  // 支出追加・編集モーダル（レシートOCR機能内蔵）
   openExpenseModal(itemToEdit = null) {
     const isEdit = !!itemToEdit;
     const { partnerAName, partnerBName, defaultRatioA } = this.settings;
@@ -495,6 +521,16 @@ class MochiBudgetApp {
             <button class="icon-btn" id="btnCloseExpenseModal">✕</button>
           </div>
           <form id="expenseForm" class="modal-body">
+            <!-- 【フィードバック2】レシート・領収書OCR読み取りボックス -->
+            ${!isEdit ? `
+              <div class="ocr-upload-box" id="ocrUploadArea" style="background: var(--mochi-kinako); border: 2px dashed var(--mochi-ink); border-radius: var(--radius-m); padding: 14px; text-align: center; cursor: pointer;">
+                <input type="file" id="receiptFileInput" accept="image/*,.pdf" style="display: none;" />
+                <div style="font-size: 1.6rem; margin-bottom: 2px;">📷</div>
+                <div style="font-weight: 900; font-size: 0.9rem;" id="ocrStatusText">レシート・領収書の写真を送る</div>
+                <div style="font-size: 0.75rem; color: var(--mochi-ink-sub);">金額・店名・日付を自動で読み取ります（Freee風OCR）</div>
+              </div>
+            ` : ''}
+
             <div class="form-group">
               <label class="form-label">どちらが支払いましたか？</label>
               <div class="payer-toggle-group">
@@ -578,6 +614,52 @@ class MochiBudgetApp {
     overlay.querySelector('#btnCloseExpenseModal').addEventListener('click', close);
     overlay.querySelector('#btnCancelExpense').addEventListener('click', close);
 
+    // OCR ファイル選択と読み取り
+    const ocrArea = overlay.querySelector('#ocrUploadArea');
+    const fileInput = overlay.querySelector('#receiptFileInput');
+    const ocrStatus = overlay.querySelector('#ocrStatusText');
+
+    if (ocrArea && fileInput) {
+      ocrArea.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        ocrStatus.textContent = '⏳ もちもち読み取り中...';
+        ocrArea.style.opacity = '0.7';
+
+        try {
+          const result = await OcrService.scanReceipt(file, (msg) => {
+            ocrStatus.textContent = msg;
+          });
+
+          if (result.amount) {
+            overlay.querySelector('#formAmount').value = result.amount;
+          }
+          if (result.title) {
+            overlay.querySelector('#formTitle').value = result.title;
+          }
+          if (result.date) {
+            overlay.querySelector('#formDate').value = result.date;
+          }
+          if (result.category) {
+            overlay.querySelector('#formCategory').value = result.category;
+            overlay.querySelectorAll('.category-option-btn').forEach(btn => {
+              btn.classList.toggle('selected', btn.dataset.cat === result.category);
+            });
+          }
+
+          ocrStatus.textContent = '✨ 読み取り完了！自動入力しました';
+          this.showToast('レシートを読み取りましたよ');
+        } catch (err) {
+          console.error('OCR Error', err);
+          ocrStatus.textContent = 'あれれ、読み取れませんでした';
+        } finally {
+          ocrArea.style.opacity = '1';
+        }
+      });
+    }
+
     const btnPayerA = overlay.querySelector('#btnPayerA');
     const btnPayerB = overlay.querySelector('#btnPayerB');
     const inputPaidBy = overlay.querySelector('#formPaidBy');
@@ -653,6 +735,16 @@ class MochiBudgetApp {
 
       await this.storage.saveExpense(newExpense);
       await this.loadData();
+
+      // 【フィードバック3】支出を記録するたび自動でLINEに通知送信！
+      const currentCalc = calculateSettlement({
+        expenses: this.expenses,
+        fixedCosts: this.fixedCosts,
+        settings: this.settings,
+        currentMonth: this.currentMonth
+      });
+      this.lineService.notifyExpenseAdded(newExpense, currentCalc, this.settings);
+
       close();
       this.render();
       this.attachEventListeners();
@@ -660,7 +752,7 @@ class MochiBudgetApp {
     });
   }
 
-  // 固定費モーダル
+  // 固定費追加・編集モーダル（登録月以降のみ反映＆特定月で削除時はそれ以降のみ削除）
   openFixedCostModal(itemToEdit = null) {
     const isEdit = !!itemToEdit;
     const { partnerAName, partnerBName, defaultRatioA } = this.settings;
@@ -668,6 +760,7 @@ class MochiBudgetApp {
     const initialPaidBy = itemToEdit ? itemToEdit.paidBy : 'A';
     const initialCategory = itemToEdit ? itemToEdit.category : 'housing';
     const initialSplitType = itemToEdit ? itemToEdit.splitType : 'default';
+    const initialStartMonth = itemToEdit?.startMonth || this.currentMonth;
 
     const modalContainer = document.getElementById('modalContainer');
     modalContainer.innerHTML = `
@@ -679,7 +772,7 @@ class MochiBudgetApp {
           </div>
           <form id="fixedCostForm" class="modal-body">
             <div style="font-size: 0.8rem; color: var(--mochi-ink-sub);">
-              家賃や光回線など、毎月自動的に加算される項目です。
+              登録した月（<strong>${this.formatMonthDisplay(initialStartMonth)}</strong>）以降の月に自動で反映されます。
             </div>
 
             <div class="form-group">
@@ -727,12 +820,17 @@ class MochiBudgetApp {
                 </select>
               </div>
             </div>
+
+            <div class="form-group">
+              <label class="form-label">開始月（この月以降に反映）</label>
+              <input type="month" id="fixedStartMonth" class="form-input" value="${initialStartMonth}" />
+            </div>
           </form>
 
           <div class="modal-footer">
             ${isEdit ? `
-              <button type="button" class="btn-secondary" id="btnDeleteFixedCost" style="color: #DC2626;">
-                削除する
+              <button type="button" class="btn-secondary" id="btnDeleteFixedFuture" style="color: #DC2626; font-size: 0.8rem;">
+                今月以降を削除
               </button>
             ` : ''}
             <button type="button" class="btn-secondary" id="btnCancelFixed">やめる</button>
@@ -763,14 +861,16 @@ class MochiBudgetApp {
       inputPaidBy.value = 'B';
     });
 
-    overlay.querySelector('#btnDeleteFixedCost')?.addEventListener('click', async () => {
-      if (confirm('この固定費を消してもよろしいですか？')) {
-        await this.storage.deleteFixedCost(itemToEdit.id);
+    // 【フィードバック5】今月以降のみ削除する
+    overlay.querySelector('#btnDeleteFixedFuture')?.addEventListener('click', async () => {
+      const msg = `この固定費を【${this.formatMonthDisplay(this.currentMonth)}以降】削除しますか？\n（過去の月の記録はそのまま残ります）`;
+      if (confirm(msg)) {
+        await this.storage.deleteFixedCost(itemToEdit.id, this.currentMonth);
         await this.loadData();
         close();
         this.render();
         this.attachEventListeners();
-        this.showToast('削除しましたよ');
+        this.showToast('今月以降の固定費を削除しました');
       }
     });
 
@@ -781,6 +881,7 @@ class MochiBudgetApp {
       const paidBy = inputPaidBy.value;
       const category = overlay.querySelector('#fixedCategory').value;
       const splitType = overlay.querySelector('#fixedSplitType').value;
+      const startMonth = overlay.querySelector('#fixedStartMonth').value || this.currentMonth;
 
       if (!title || !amount) return;
 
@@ -791,6 +892,8 @@ class MochiBudgetApp {
         paidBy,
         category,
         splitType,
+        startMonth,
+        endMonth: itemToEdit?.endMonth || null,
         active: true
       };
 
@@ -803,9 +906,9 @@ class MochiBudgetApp {
     });
   }
 
-  // 設定モーダル
+  // 設定モーダル（2人の名前・比率・LINE通知設定・リマインド日）
   openSettingsModal() {
-    const { partnerAName, partnerBName, defaultRatioA } = this.settings;
+    const { partnerAName, partnerBName, defaultRatioA, lineToken, lineTo, reminderDay, lineAutoNotify } = this.settings;
     const modalContainer = document.getElementById('modalContainer');
 
     modalContainer.innerHTML = `
@@ -817,9 +920,10 @@ class MochiBudgetApp {
           </div>
           <div class="modal-body">
             <div style="display: flex; align-items: center; justify-content: center; margin: 4px 0 10px;">
-              ${renderMochiDog('round', 70)}
+              <img src="/characters/mochi-calm.png" style="width: 80px;" alt="dog" />
             </div>
 
+            <!-- 名前設定 -->
             <div class="form-group">
               <label class="form-label">2人のなまえ</label>
               <div class="form-row">
@@ -828,6 +932,7 @@ class MochiBudgetApp {
               </div>
             </div>
 
+            <!-- 比率スライダー -->
             <div class="form-group">
               <label class="form-label">基本の按分比率</label>
               <div class="ratio-slider-container">
@@ -842,6 +947,49 @@ class MochiBudgetApp {
                   <button type="button" class="btn-secondary" style="flex: 1; padding: 6px; font-size: 0.78rem;" id="set7030">70 : 30</button>
                 </div>
               </div>
+            </div>
+
+            <!-- 【フィードバック3 & 4】LINEトークルーム連携 ＆ 自動リマインド設定 -->
+            <div class="form-group" style="padding-top: 12px; border-top: 2px solid #E6DCC3;">
+              <label class="form-label" style="display: flex; align-items: center; gap: 6px;">
+                <span>💬 LINE自動送信 ＆ リマインド設定</span>
+              </label>
+              <div style="font-size: 0.78rem; color: var(--mochi-ink-sub); line-height: 1.5; margin-bottom: 8px;">
+                LINE Bot（無料）を作成して2人のグループに招待すると、支出記録時の自動通知や月末のリマインドが届きます。
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" style="font-size: 0.78rem;">LINE Channel Access Token</label>
+                <input type="password" id="settingLineToken" class="form-input" placeholder="LINE Developersのアクセストークン" value="${lineToken || ''}" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" style="font-size: 0.78rem;">送信先グループID または ユーザーID</label>
+                <input type="text" id="settingLineTo" class="form-input" placeholder="c123456... または U123456..." value="${lineTo || ''}" />
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label" style="font-size: 0.78rem;">毎月の精算リマインド日</label>
+                  <select id="settingReminderDay" class="form-select">
+                    <option value="20" ${reminderDay == 20 ? 'selected' : ''}>毎月 20日</option>
+                    <option value="25" ${reminderDay == 25 ? 'selected' : ''}>毎月 25日（給料日頃）</option>
+                    <option value="28" ${reminderDay == 28 ? 'selected' : ''}>毎月 28日</option>
+                    <option value="30" ${reminderDay == 30 ? 'selected' : ''}>毎月 30日</option>
+                    <option value="31" ${reminderDay == 31 ? 'selected' : ''}>毎月 月末(31日)</option>
+                  </select>
+                </div>
+                <div class="form-group" style="justify-content: flex-end;">
+                  <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 700; cursor: pointer;">
+                    <input type="checkbox" id="settingLineAutoNotify" ${lineAutoNotify !== false ? 'checked' : ''} />
+                    <span>支出記録時に即時送信</span>
+                  </label>
+                </div>
+              </div>
+
+              <button type="button" class="btn-secondary" id="btnTestLine" style="margin-top: 6px; font-size: 0.8rem;">
+                今すぐLINEテスト送信 🐾
+              </button>
             </div>
 
             <div class="form-group" style="padding-top: 12px; border-top: 2px solid #E6DCC3;">
@@ -888,6 +1036,30 @@ class MochiBudgetApp {
     overlay.querySelector('#set6040').addEventListener('click', () => setR(60));
     overlay.querySelector('#set7030').addEventListener('click', () => setR(70));
 
+    // LINEテスト送信
+    overlay.querySelector('#btnTestLine').addEventListener('click', async () => {
+      const token = overlay.querySelector('#settingLineToken').value.trim();
+      const to = overlay.querySelector('#settingLineTo').value.trim();
+      if (!token || !to) {
+        alert('LINE Tokenと送信先IDを入力してください');
+        return;
+      }
+      this.settings.lineToken = token;
+      this.settings.lineTo = to;
+      const calc = calculateSettlement({
+        expenses: this.expenses,
+        fixedCosts: this.fixedCosts,
+        settings: this.settings,
+        currentMonth: this.currentMonth
+      });
+      const ok = await this.lineService.sendSettlementReminder(calc, this.settings, this.formatMonthDisplay(this.currentMonth));
+      if (ok) {
+        this.showToast('LINEにテストメッセージを送りましたよ！');
+      } else {
+        alert('LINE送信に失敗しました。トークンや送信先IDを確認してください。');
+      }
+    });
+
     overlay.querySelector('#btnLoadDemo').addEventListener('click', async () => {
       if (confirm('サンプルデータを入れ直しますか？')) {
         await this.storage.loadDemoData(this.currentMonth);
@@ -915,12 +1087,20 @@ class MochiBudgetApp {
       const nameB = overlay.querySelector('#settingNameB').value.trim() || 'パートナー';
       const rA = parseInt(slider.value, 10);
       const rB = 100 - rA;
+      const lineTokenVal = overlay.querySelector('#settingLineToken').value.trim();
+      const lineToVal = overlay.querySelector('#settingLineTo').value.trim();
+      const reminderDayVal = Number(overlay.querySelector('#settingReminderDay').value) || 25;
+      const autoNotifyVal = overlay.querySelector('#settingLineAutoNotify').checked;
 
       this.storage.saveSettings({
         partnerAName: nameA,
         partnerBName: nameB,
         defaultRatioA: rA,
-        defaultRatioB: rB
+        defaultRatioB: rB,
+        lineToken: lineTokenVal,
+        lineTo: lineToVal,
+        reminderDay: reminderDayVal,
+        lineAutoNotify: autoNotifyVal
       });
       this.settings = this.storage.settings;
 
@@ -931,7 +1111,7 @@ class MochiBudgetApp {
     });
   }
 
-  // 同期モーダル
+  // クラウド同期 (Supabase) モーダル
   openSyncModal() {
     const cfg = this.storage.getSupabaseConfig();
     const isConnected = this.storage.isConnected;
