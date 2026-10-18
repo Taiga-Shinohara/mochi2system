@@ -62,9 +62,12 @@ class MochiBudgetApp {
 
     await this.loadData();
 
-    // デモデータのロードは、Supabase未接続かつローカルにも一切データがない初回のみ
-    if (!this.storage.isConnected && this.expenses.length === 0 && this.fixedCosts.length === 0) {
+    // デモデータのロードは、Supabase未設定かつ初回訪問時（ローカルにも一切データがない場合）のみ
+    const onboardingDone = localStorage.getItem('pairpay_onboarding_done');
+    const hasSupabase = Boolean(this.storage.getSupabaseConfig().url);
+    if (!this.storage.isConnected && !hasSupabase && !onboardingDone && this.expenses.length === 0 && this.fixedCosts.length === 0) {
       await this.storage.loadDemoData(this.currentMonth);
+      localStorage.setItem('pairpay_onboarding_done', '1');
       await this.loadData();
     }
 
@@ -924,8 +927,16 @@ class MochiBudgetApp {
               </div>
 
               <div class="form-group">
-                <label class="form-label" style="font-size: 0.78rem;">送信先グループID または ユーザーID</label>
-                <input type="text" id="settingLineTo" class="form-input" placeholder="c123456... または U123456..." value="${lineTo || ''}" />
+                <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                  <label class="form-label" style="font-size: 0.78rem;">送信先グループID または ユーザーID</label>
+                  <button type="button" id="btnFetchWebhookId" class="btn-secondary" style="padding: 2px 8px; font-size: 0.72rem;">
+                    🔍 WebhookからID取得
+                  </button>
+                </div>
+                <input type="text" id="settingLineTo" class="form-input" placeholder="C123456... または U123456..." value="${lineTo || ''}" />
+                <div style="font-size: 0.72rem; color: var(--mochi-ink-sub); line-height: 1.4; margin-top: 2px;">
+                  💡 LINE DevelopersのWebhookに <code>${window.location.origin}/api/line-webhook</code> を設定し、グループでBotを招待または「ID」と発言すると自動検知できます。
+                </div>
               </div>
 
               <div class="form-row">
@@ -1020,7 +1031,31 @@ class MochiBudgetApp {
       }
     });
 
+    overlay.querySelector('#btnFetchWebhookId')?.addEventListener('click', async () => {
+      const btn = overlay.querySelector('#btnFetchWebhookId');
+      btn.textContent = '確認中...';
+      try {
+        const res = await fetch('/api/line-webhook');
+        const data = await res.json();
+        const id = data?.lastDetected?.groupId;
+        if (id) {
+          overlay.querySelector('#settingLineTo').value = id;
+          this.showToast('グループIDを取得・入力しましたよ！');
+        } else {
+          alert('まだグループIDが検知されていません。\nLINE DevelopersでWebhook URLを設定後、グループ内でBotにメンションするか「ID」と発言してください。');
+        }
+      } catch (err) {
+        alert('取得に失敗しました: ' + err.message);
+      } finally {
+        btn.textContent = '🔍 WebhookからID取得';
+      }
+    });
+
     overlay.querySelector('#btnLoadDemo').addEventListener('click', async () => {
+      if (this.storage.isConnected || this.storage.getSupabaseConfig().url) {
+        alert('現在クラウド同期が有効です。本番データベースのデータを保護するため、同期中のサンプルデータ投入はできません。');
+        return;
+      }
       if (confirm('サンプルデータを入れ直しますか？')) {
         await this.storage.loadDemoData(this.currentMonth);
         await this.loadData();

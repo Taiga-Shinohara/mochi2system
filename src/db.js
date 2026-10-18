@@ -553,6 +553,12 @@ export class StorageService {
 
   // デモデータ生成
   async loadDemoData(currentMonth) {
+    // 【本番データ保護】クラウド同期中、またはSupabase設定済みの場合は絶対にダミーデータを投入しない
+    if (this.isConnected || this.getSupabaseConfig().url) {
+      console.warn('クラウド同期が有効なため、ダミーデータの投入をスキップしました。本番DBを保護しています。');
+      return;
+    }
+
     const demoFixed = [
       { id: 'fx_1', title: '賃貸マンション家賃', amount: 96000, paidBy: 'A', category: 'housing', splitType: 'default', startMonth: currentMonth, endMonth: null, active: true },
       { id: 'fx_2', title: '光回線インターネット', amount: 5200, paidBy: 'B', category: 'wifi', splitType: 'half', startMonth: currentMonth, endMonth: null, active: true },
