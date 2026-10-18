@@ -31,6 +31,9 @@ class MochiBudgetApp {
     this.fixedCosts = [];
     this.settings = this.storage.settings;
 
+    this.isSelectMode = false;
+    this.selectedIds = new Set();
+
     this.lineService = new LineService(() => this.settings);
 
     this.init();
@@ -167,6 +170,16 @@ class MochiBudgetApp {
     let dogPose = 'calm';
     let captionText = 'わかっていますよ';
 
+    // 遊具風シーソーの傾き角度計算（立替金額が大きい側が重みで沈み込む）
+    let tiltDeg = 0;
+    if (calc.status !== 'even' && calc.transferAmount > 0) {
+      const maxTilt = 9; // 最大9度の自然で愛らしい傾斜
+      const severity = Math.min(1, calc.transferAmount / 25000);
+      const angle = Math.max(3, Math.round(severity * maxTilt));
+      // balanceA > 0 のとき A が立替中（左が沈む = -angle）
+      tiltDeg = calc.balanceA > 0 ? -angle : angle;
+    }
+
     if (calc.status === 'even') {
       dogPose = 'smile';
       captionText = 'でも幸せならOKです';
@@ -246,26 +259,58 @@ class MochiBudgetApp {
             `}
           </div>
 
-          <!-- シーソーメーター（添付のイラストをミニサイズで配置） -->
+          <!-- 遊具風精算シーソー（両脇に犬・立替が多い人が沈み込む） -->
           <div class="seesaw-container">
             <div class="seesaw-partners-row">
               <span class="partner-pill a">🐾 ${partnerAName}</span>
-              <span style="font-size: 0.78rem; font-weight: 700; color: var(--mochi-ink-sub);">精算シーソー</span>
+              <span class="seesaw-status-tag ${calc.status === 'even' ? 'even' : (calc.balanceA > 0 ? 'a-heavy' : 'b-heavy')}">
+                ${calc.status === 'even' ? '⚖️ つり合っています' : (calc.balanceA > 0 ? `🐾 ${partnerAName} が立替中` : `🐾 ${partnerBName} が立替中`)}
+              </span>
               <span class="partner-pill b">🐾 ${partnerBName}</span>
             </div>
 
-            <div class="seesaw-board">
-              <div class="seesaw-center-line"></div>
-              <div class="seesaw-fulcrum"></div>
-              <div class="seesaw-indicator-dog" style="left: ${calc.needlePosition}%;">
-                <img src="/characters/mochi-smile.png" style="width: 38px; height: 38px; object-fit: contain;" alt="dog" />
+            <!-- 遊具シーソー本体 -->
+            <div class="playground-seesaw-wrapper">
+              <div class="seesaw-plank" style="transform: rotate(${tiltDeg}deg);">
+                <!-- A側の席 & 犬アイコン -->
+                <div class="seesaw-seat seat-a">
+                  <div class="seesaw-dog-rider">
+                    <img src="/characters/mochi-smile.png" alt="${partnerAName}" class="dog-rider-img ${calc.balanceA > 0 ? 'heavy-sink' : ''}" />
+                    <span class="seat-badge ${calc.balanceA >= 0 ? 'plus' : 'minus'}">
+                      ${calc.balanceA >= 0 ? `+¥${calc.balanceA.toLocaleString()}` : `-¥${Math.abs(calc.balanceA).toLocaleString()}`}
+                    </span>
+                  </div>
+                  <div class="seat-handle"></div>
+                </div>
+
+                <!-- シーソーの木製板 & 中心ピン -->
+                <div class="seesaw-bar">
+                  <div class="seesaw-pivot-pin"></div>
+                </div>
+
+                <!-- B側の席 & 犬アイコン -->
+                <div class="seesaw-seat seat-b">
+                  <div class="seesaw-dog-rider">
+                    <img src="/characters/mochi-stretch.png" alt="${partnerBName}" class="dog-rider-img ${calc.balanceB > 0 ? 'heavy-sink' : ''}" />
+                    <span class="seat-badge ${calc.balanceB >= 0 ? 'plus' : 'minus'}">
+                      ${calc.balanceB >= 0 ? `+¥${calc.balanceB.toLocaleString()}` : `-¥${Math.abs(calc.balanceB).toLocaleString()}`}
+                    </span>
+                  </div>
+                  <div class="seat-handle"></div>
+                </div>
+              </div>
+
+              <!-- 支点（三角の土台）と地面 -->
+              <div class="seesaw-base-fulcrum">
+                <div class="fulcrum-triangle"></div>
+                <div class="fulcrum-ground-line"></div>
               </div>
             </div>
 
             <div class="seesaw-labels">
-              <span>◀ ${partnerAName}が立替中</span>
-              <span style="color: var(--mochi-ink);">イーブン</span>
-              <span>${partnerBName}が立替中 ▶</span>
+              <span>${calc.balanceA > 0 ? '⬇️ 立替が多くて沈み中' : (calc.balanceA < 0 ? '⬆️ 浮き中' : '均等')}</span>
+              <span style="font-weight: 800; color: var(--mochi-ink);">${calc.status === 'even' ? 'イーブン（0円）' : `差額: ¥${calc.transferAmount.toLocaleString()}`}</span>
+              <span>${calc.balanceB > 0 ? '⬇️ 立替が多くて沈み中' : (calc.balanceB < 0 ? '⬆️ 浮き中' : '均等')}</span>
             </div>
           </div>
 
@@ -385,6 +430,34 @@ class MochiBudgetApp {
                 }).join('')}
           </section>
         ` : `
+          <div class="list-header-actions">
+            <div style="font-weight: 800; font-size: 0.9rem; display: flex; align-items: center; gap: 6px;">
+              <span>📋 支出・固定費一覧</span>
+              <span class="badge" style="font-size: 0.72rem; background: var(--mochi-kinako); padding: 2px 6px; border-radius: 999px; border: 1px solid var(--mochi-ink);">${displayedItems.length}件</span>
+            </div>
+            ${displayedItems.length > 0 ? `
+              <button type="button" class="btn-secondary btn-select-mode" id="btnToggleSelectMode">
+                ${this.isSelectMode ? '✕ 選択終了' : '☑️ 選択して削除'}
+              </button>
+            ` : ''}
+          </div>
+
+          ${this.isSelectMode ? `
+            <div class="bulk-action-bar">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" class="btn-secondary" id="btnSelectAll" style="padding: 4px 10px; font-size: 0.78rem;">
+                  ${this.selectedIds.size === displayedItems.length ? '全解除' : '全選択'}
+                </button>
+                <span style="font-weight: 800; font-size: 0.82rem; color: var(--mochi-ink);">
+                  ${this.selectedIds.size}件 選択中
+                </span>
+              </div>
+              <button type="button" class="btn-primary" id="btnBulkDelete" ${this.selectedIds.size === 0 ? 'disabled' : ''} style="padding: 6px 12px; font-size: 0.8rem; background: #EF4444; color: #FFF; border-color: var(--mochi-ink); box-shadow: 0 2px 0 var(--mochi-ink);">
+                🗑️ 選択した項目を削除
+              </button>
+            </div>
+          ` : ''}
+
           <div class="category-filter-bar">
             <button class="mochi-chip ${this.selectedCategoryFilter === 'all' ? 'active' : ''}" data-cat="all">すべて</button>
             ${Object.entries(CATEGORIES).map(([key, cat]) => `
@@ -407,6 +480,7 @@ class MochiBudgetApp {
               const cat = CATEGORIES[item.category] || CATEGORIES.other;
               const isPayerA = item.paidBy === 'A';
               const payerName = isPayerA ? partnerAName : partnerBName;
+              const isChecked = this.selectedIds.has(item.id);
 
               let splitText = '比率通り';
               if (item.splitType === 'half') splitText = '折半';
@@ -415,7 +489,12 @@ class MochiBudgetApp {
               if (item.splitType === 'custom') splitText = `カスタム (${item.customRatioA}%)`;
 
               return `
-                <div class="expense-card-item" data-id="${item.id}" data-is-fixed="${item.isFixed}">
+                <div class="expense-card-item ${this.isSelectMode ? 'selection-mode' : ''} ${isChecked ? 'selected' : ''}" data-id="${item.id}" data-is-fixed="${item.isFixed}">
+                  ${this.isSelectMode ? `
+                    <div class="item-checkbox-wrapper">
+                      <input type="checkbox" class="item-checkbox" data-id="${item.id}" ${isChecked ? 'checked' : ''} />
+                    </div>
+                  ` : ''}
                   <div class="expense-card-left">
                     <div class="item-cat-icon">
                       <span>${cat.icon}</span>
@@ -489,12 +568,69 @@ class MochiBudgetApp {
       });
     });
 
+    // 複数選択モード切替
+    appEl.querySelector('#btnToggleSelectMode')?.addEventListener('click', () => {
+      this.isSelectMode = !this.isSelectMode;
+      if (!this.isSelectMode) {
+        this.selectedIds.clear();
+      }
+      this.render();
+      this.attachEventListeners();
+    });
+
+    // 全選択 / 全解除
+    appEl.querySelector('#btnSelectAll')?.addEventListener('click', () => {
+      const calc = calculateSettlement({
+        expenses: this.expenses,
+        fixedCosts: this.fixedCosts,
+        settings: this.settings,
+        currentMonth: this.currentMonth
+      });
+      let displayedItems = calc.allItems;
+      if (this.activeTab === 'variable') displayedItems = displayedItems.filter(i => !i.isFixed);
+      else if (this.activeTab === 'fixed') displayedItems = displayedItems.filter(i => i.isFixed);
+      if (this.selectedCategoryFilter !== 'all') displayedItems = displayedItems.filter(i => i.category === this.selectedCategoryFilter);
+
+      if (this.selectedIds.size === displayedItems.length) {
+        this.selectedIds.clear();
+      } else {
+        displayedItems.forEach(i => this.selectedIds.add(i.id));
+      }
+      this.render();
+      this.attachEventListeners();
+    });
+
+    // 複数選択一括削除
+    appEl.querySelector('#btnBulkDelete')?.addEventListener('click', async () => {
+      const count = this.selectedIds.size;
+      if (count === 0) return;
+      if (!confirm(`選択した ${count} 件の項目を削除しますか？\n（固定費が含まれる場合は今月以降が削除されます）`)) {
+        return;
+      }
+
+      for (const id of this.selectedIds) {
+        if (id.startsWith('fixed_')) {
+          const fixedId = id.replace('fixed_', '');
+          await this.storage.deleteFixedCost(fixedId, this.currentMonth);
+        } else {
+          await this.storage.deleteExpense(id);
+        }
+      }
+
+      this.selectedIds.clear();
+      this.isSelectMode = false;
+      await this.loadData();
+      this.render();
+      this.attachEventListeners();
+      this.showToast(`${count}件をまとめて削除しましたよ 🗑️`);
+    });
+
     appEl.querySelector('#btnOpenExpenseModal')?.addEventListener('click', () => {
-      this.openExpenseModal(null);
+      this.openExpenseModal(null, 'variable');
     });
 
     appEl.querySelector('#btnAddFixedCost')?.addEventListener('click', () => {
-      this.openFixedCostModal(null);
+      this.openExpenseModal(null, 'fixed');
     });
 
     appEl.querySelector('#btnShareLine')?.addEventListener('click', () => {
@@ -506,63 +642,106 @@ class MochiBudgetApp {
     });
 
     appEl.querySelectorAll('.expense-card-item').forEach(itemEl => {
-      itemEl.addEventListener('click', () => {
-        const id = itemEl.dataset.id;
-        const isFixed = itemEl.dataset.isFixed === 'true';
+      const id = itemEl.dataset.id;
+      const isFixed = itemEl.dataset.isFixed === 'true';
+
+      itemEl.addEventListener('click', (e) => {
+        // 複数選択モードの場合：選択のON/OFFを切り替える
+        if (this.isSelectMode) {
+          if (this.selectedIds.has(id)) {
+            this.selectedIds.delete(id);
+          } else {
+            this.selectedIds.add(id);
+          }
+          this.render();
+          this.attachEventListeners();
+          return;
+        }
+
+        // 通常モードの場合：編集モーダルを開く
         if (isFixed) {
           const realId = id.replace('fixed_', '');
           const target = this.fixedCosts.find(f => f.id === realId);
-          if (target) this.openFixedCostModal(target);
+          if (target) this.openExpenseModal(target, 'fixed');
         } else {
           const target = this.expenses.find(x => x.id === id);
-          if (target) this.openExpenseModal(target);
+          if (target) this.openExpenseModal(target, 'variable');
         }
       });
     });
   }
 
-  // 支出追加・編集モーダル（レシートOCR機能内蔵）
-  openExpenseModal(itemToEdit = null) {
+  // 支出・固定費の記録モーダル（変動費/固定費切替対応）
+  openExpenseModal(itemToEdit = null, defaultType = 'variable') {
     const isEdit = !!itemToEdit;
     const { partnerAName, partnerBName, defaultRatioA } = this.settings;
 
+    let initialCostType = defaultType || 'variable';
+    if (itemToEdit) {
+      initialCostType = (itemToEdit.startMonth || itemToEdit.isFixed) ? 'fixed' : 'variable';
+    }
+
     const initialPaidBy = itemToEdit ? itemToEdit.paidBy : 'A';
-    const initialCategory = itemToEdit ? itemToEdit.category : 'food';
+    const initialCategory = itemToEdit ? itemToEdit.category : (initialCostType === 'fixed' ? 'housing' : 'food');
     const initialSplitType = itemToEdit ? itemToEdit.splitType : 'default';
     const initialCustomRatioA = itemToEdit?.customRatioA != null ? itemToEdit.customRatioA : defaultRatioA;
+    const initialDate = itemToEdit?.date || getTodayString();
+    const initialStartMonth = itemToEdit?.startMonth || this.currentMonth;
 
     const modalContainer = document.getElementById('modalContainer');
     modalContainer.innerHTML = `
       <div class="modal-overlay open" id="expenseModalOverlay">
         <div class="modal-dialog">
           <div class="modal-header">
-            <h3 class="modal-title">${isEdit ? '支出を直す' : '支出を記録する'}</h3>
+            <h3 class="modal-title" id="modalHeadingTitle">${isEdit ? (initialCostType === 'fixed' ? '固定費を直す' : '支出を直す') : (initialCostType === 'fixed' ? '固定費を記録する' : '支出を記録する')}</h3>
             <button class="icon-btn" id="btnCloseExpenseModal">✕</button>
           </div>
           <form id="expenseForm" class="modal-body">
+            <!-- 変動費・固定費の選択トグル（デフォルトは変動費） -->
             <div class="form-group">
-              <label class="form-label">どちらが支払いましたか？</label>
+              <label class="form-label">支出の種類</label>
+              <div class="cost-type-toggle">
+                <button type="button" class="cost-type-btn ${initialCostType === 'variable' ? 'active' : ''}" id="btnCostTypeVariable">
+                  <span style="font-size: 0.95rem; font-weight: 800;">⚡ 変動費</span>
+                  <span style="font-size: 0.72rem; opacity: 0.85;">今月のお買い物・外食など</span>
+                </button>
+                <button type="button" class="cost-type-btn ${initialCostType === 'fixed' ? 'active' : ''}" id="btnCostTypeFixed">
+                  <span style="font-size: 0.95rem; font-weight: 800;">🔄 固定費</span>
+                  <span style="font-size: 0.72rem; opacity: 0.85;">毎月自動（家賃・光熱費等）</span>
+                </button>
+              </div>
+              <input type="hidden" id="formCostType" value="${initialCostType}" />
+            </div>
+
+            <!-- 固定費の説明案内 -->
+            <div id="fixedCostNotice" style="display: ${initialCostType === 'fixed' ? 'block' : 'none'}; font-size: 0.78rem; background: var(--mochi-kinako); border: 1.5px solid var(--mochi-ink); border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 12px; color: var(--mochi-ink); line-height: 1.5;">
+              🐾 <strong>毎月の固定費</strong><br />
+              家賃や光熱費・サブスクなど、指定した開始月以降に毎月自動反映されます。
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" id="labelPayerQuestion">${initialCostType === 'fixed' ? '引落口座・カード担当' : 'どちらが支払いましたか？'}</label>
               <div class="payer-toggle-group">
                 <button type="button" class="payer-toggle-btn a ${initialPaidBy === 'A' ? 'selected' : ''}" id="btnPayerA">
                   <div style="font-weight: 900; font-size: 1rem;">${partnerAName}</div>
-                  <div style="font-size: 0.75rem;">が立替えた</div>
+                  <div style="font-size: 0.75rem;" id="payerSubA">${initialCostType === 'fixed' ? 'の口座/カード' : 'が立替えた'}</div>
                 </button>
                 <button type="button" class="payer-toggle-btn b ${initialPaidBy === 'B' ? 'selected' : ''}" id="btnPayerB">
                   <div style="font-weight: 900; font-size: 1rem;">${partnerBName}</div>
-                  <div style="font-size: 0.75rem;">が立替えた</div>
+                  <div style="font-size: 0.75rem;" id="payerSubB">${initialCostType === 'fixed' ? 'の口座/カード' : 'が立替えた'}</div>
                 </button>
               </div>
               <input type="hidden" id="formPaidBy" value="${initialPaidBy}" />
             </div>
 
             <div class="form-group">
-              <label class="form-label">金額 (円)</label>
-              <input type="number" id="formAmount" class="form-input" placeholder="例: 3500" style="font-size: 1.4rem;" value="${itemToEdit ? itemToEdit.amount : ''}" required autofocus />
+              <label class="form-label" id="labelAmount">${initialCostType === 'fixed' ? '月額料金 (円)' : '金額 (円)'}</label>
+              <input type="number" id="formAmount" class="form-input" placeholder="${initialCostType === 'fixed' ? '例: 96000' : '例: 3500'}" style="font-size: 1.4rem;" value="${itemToEdit ? itemToEdit.amount : ''}" required autofocus />
             </div>
 
             <div class="form-group">
-              <label class="form-label">使った内容</label>
-              <input type="text" id="formTitle" class="form-input" placeholder="例: スーパーで食材まとめ買い" value="${itemToEdit ? itemToEdit.title : ''}" required />
+              <label class="form-label" id="labelTitle">${initialCostType === 'fixed' ? '固定費の項目名' : '使った内容'}</label>
+              <input type="text" id="formTitle" class="form-input" placeholder="${initialCostType === 'fixed' ? '例: 家賃、光回線、水道光熱費' : '例: スーパーで食材まとめ買い'}" value="${itemToEdit ? itemToEdit.title : ''}" required />
             </div>
 
             <div class="form-group">
@@ -579,10 +758,19 @@ class MochiBudgetApp {
             </div>
 
             <div class="form-row">
-              <div class="form-group">
+              <!-- 変動費：日付 -->
+              <div class="form-group" id="groupVariableDate" style="display: ${initialCostType === 'variable' ? 'block' : 'none'};">
                 <label class="form-label">日付</label>
-                <input type="date" id="formDate" class="form-input" value="${itemToEdit ? itemToEdit.date : getTodayString()}" />
+                <input type="date" id="formDate" class="form-input" value="${initialDate}" />
               </div>
+
+              <!-- 固定費：開始月 -->
+              <div class="form-group" id="groupFixedStartMonth" style="display: ${initialCostType === 'fixed' ? 'block' : 'none'};">
+                <label class="form-label">反映開始月</label>
+                <input type="month" id="formFixedStartMonth" class="form-input" value="${initialStartMonth}" />
+              </div>
+
+              <!-- 負担ルール -->
               <div class="form-group">
                 <label class="form-label">負担ルール</label>
                 <select id="formSplitType" class="form-select">
@@ -607,11 +795,11 @@ class MochiBudgetApp {
           <div class="modal-footer">
             ${isEdit ? `
               <button type="button" class="btn-secondary" id="btnDeleteExpense" style="color: #DC2626;">
-                削除する
+                ${initialCostType === 'fixed' ? '今月以降を削除' : '削除する'}
               </button>
             ` : ''}
             <button type="button" class="btn-secondary" id="btnCancelExpense">やめる</button>
-            <button type="submit" form="expenseForm" class="btn-primary">${isEdit ? '更新する' : '保存する'}</button>
+            <button type="submit" form="expenseForm" class="btn-primary">${isEdit ? '更新する' : '記録する'}</button>
           </div>
         </div>
       </div>
@@ -622,6 +810,57 @@ class MochiBudgetApp {
 
     overlay.querySelector('#btnCloseExpenseModal').addEventListener('click', close);
     overlay.querySelector('#btnCancelExpense').addEventListener('click', close);
+
+    const btnCostTypeVariable = overlay.querySelector('#btnCostTypeVariable');
+    const btnCostTypeFixed = overlay.querySelector('#btnCostTypeFixed');
+    const formCostType = overlay.querySelector('#formCostType');
+    const fixedNotice = overlay.querySelector('#fixedCostNotice');
+    const groupVariableDate = overlay.querySelector('#groupVariableDate');
+    const groupFixedStartMonth = overlay.querySelector('#groupFixedStartMonth');
+    const modalHeadingTitle = overlay.querySelector('#modalHeadingTitle');
+    const labelPayerQuestion = overlay.querySelector('#labelPayerQuestion');
+    const payerSubA = overlay.querySelector('#payerSubA');
+    const payerSubB = overlay.querySelector('#payerSubB');
+    const labelAmount = overlay.querySelector('#labelAmount');
+    const formAmount = overlay.querySelector('#formAmount');
+    const labelTitle = overlay.querySelector('#labelTitle');
+    const formTitle = overlay.querySelector('#formTitle');
+
+    const updateCostTypeUI = (type) => {
+      formCostType.value = type;
+      if (type === 'variable') {
+        btnCostTypeVariable.classList.add('active');
+        btnCostTypeFixed.classList.remove('active');
+        fixedNotice.style.display = 'none';
+        groupVariableDate.style.display = 'block';
+        groupFixedStartMonth.style.display = 'none';
+        modalHeadingTitle.textContent = isEdit ? '支出を直す' : '支出を記録する';
+        labelPayerQuestion.textContent = 'どちらが支払いましたか？';
+        payerSubA.textContent = 'が立替えた';
+        payerSubB.textContent = 'が立替えた';
+        labelAmount.textContent = '金額 (円)';
+        formAmount.placeholder = '例: 3500';
+        labelTitle.textContent = '使った内容';
+        formTitle.placeholder = '例: スーパーで食材まとめ買い';
+      } else {
+        btnCostTypeFixed.classList.add('active');
+        btnCostTypeVariable.classList.remove('active');
+        fixedNotice.style.display = 'block';
+        groupVariableDate.style.display = 'none';
+        groupFixedStartMonth.style.display = 'block';
+        modalHeadingTitle.textContent = isEdit ? '固定費を直す' : '固定費を記録する';
+        labelPayerQuestion.textContent = '引落口座・カード担当';
+        payerSubA.textContent = 'の口座/カード';
+        payerSubB.textContent = 'の口座/カード';
+        labelAmount.textContent = '月額料金 (円)';
+        formAmount.placeholder = '例: 96000';
+        labelTitle.textContent = '固定費の項目名';
+        formTitle.placeholder = '例: 家賃、光回線、水道光熱費';
+      }
+    };
+
+    btnCostTypeVariable.addEventListener('click', () => updateCostTypeUI('variable'));
+    btnCostTypeFixed.addEventListener('click', () => updateCostTypeUI('fixed'));
 
     const btnPayerA = overlay.querySelector('#btnPayerA');
     const btnPayerB = overlay.querySelector('#btnPayerB');
@@ -663,55 +902,108 @@ class MochiBudgetApp {
     });
 
     overlay.querySelector('#btnDeleteExpense')?.addEventListener('click', async () => {
-      if (confirm('この記録を消してもよろしいですか？')) {
-        await this.storage.deleteExpense(itemToEdit.id);
-        await this.loadData();
-        close();
-        this.render();
-        this.attachEventListeners();
-        this.showToast('削除しましたよ');
+      const wasFixed = itemToEdit && (itemToEdit.startMonth || itemToEdit.isFixed);
+      if (wasFixed) {
+        const msg = `この固定費を【${this.formatMonthDisplay(this.currentMonth)}以降】削除しますか？\n（過去の月の記録は残ります）`;
+        if (confirm(msg)) {
+          const fixedId = itemToEdit.fixedCostId || itemToEdit.id.replace('fixed_', '');
+          await this.storage.deleteFixedCost(fixedId, this.currentMonth);
+          await this.loadData();
+          close();
+          this.render();
+          this.attachEventListeners();
+          this.showToast('固定費を削除しましたよ');
+        }
+      } else {
+        if (confirm('この記録を消してもよろしいですか？')) {
+          await this.storage.deleteExpense(itemToEdit.id);
+          await this.loadData();
+          close();
+          this.render();
+          this.attachEventListeners();
+          this.showToast('削除しましたよ');
+        }
       }
     });
 
     overlay.querySelector('#expenseForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      const currentType = formCostType.value;
       const amount = Number(overlay.querySelector('#formAmount').value);
       const title = overlay.querySelector('#formTitle').value.trim();
       const paidBy = inputPaidBy.value;
       const category = overlay.querySelector('#formCategory').value;
-      const date = overlay.querySelector('#formDate').value;
       const splitType = splitSelect.value;
       const customRatioA = splitType === 'custom' ? Number(customSlider.value) : null;
 
       if (!title || !amount) return;
 
-      const newExpense = {
-        id: itemToEdit ? itemToEdit.id : `exp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-        title,
-        amount,
-        paidBy,
-        category,
-        date,
-        splitType,
-        customRatioA
-      };
+      if (currentType === 'fixed') {
+        const startMonth = overlay.querySelector('#formFixedStartMonth').value || this.currentMonth;
+        const newFixed = {
+          id: (itemToEdit && (itemToEdit.startMonth || itemToEdit.isFixed))
+            ? (itemToEdit.fixedCostId || itemToEdit.id.replace('fixed_', ''))
+            : `fx_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+          title,
+          amount,
+          paidBy,
+          category,
+          splitType,
+          customRatioA,
+          startMonth,
+          endMonth: itemToEdit?.endMonth || null,
+          active: true
+        };
 
-      await this.storage.saveExpense(newExpense);
-      await this.loadData();
+        // もし元が変動費だった場合、旧変動費を削除
+        if (isEdit && !itemToEdit.startMonth && !itemToEdit.isFixed) {
+          await this.storage.deleteExpense(itemToEdit.id);
+        }
 
-      // 【フィードバック3】支出を記録するたび自動でLINEに通知送信！
-      const currentCalc = calculateSettlement({
-        expenses: this.expenses,
-        fixedCosts: this.fixedCosts,
-        settings: this.settings,
-        currentMonth: this.currentMonth
-      });
-      this.lineService.notifyExpenseAdded(newExpense, currentCalc, this.settings);
+        await this.storage.saveFixedCost(newFixed);
+        await this.loadData();
+        close();
+        this.render();
+        this.attachEventListeners();
+        this.showToast(isEdit ? '固定費を更新しましたよ' : '固定費を記録しましたよ 🔄');
+      } else {
+        const date = overlay.querySelector('#formDate').value || getTodayString();
+        const newExpense = {
+          id: (itemToEdit && !itemToEdit.startMonth && !itemToEdit.isFixed)
+            ? itemToEdit.id
+            : `exp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+          title,
+          amount,
+          paidBy,
+          category,
+          date,
+          splitType,
+          customRatioA
+        };
 
-      close();
-      this.render();
-      this.attachEventListeners();
-      this.showToast(isEdit ? '更新できましたよ' : '記録できましたよ');
+        // もし元が固定費だった場合、旧固定費を今月以降削除
+        if (isEdit && (itemToEdit.startMonth || itemToEdit.isFixed)) {
+          const fixedId = itemToEdit.fixedCostId || itemToEdit.id.replace('fixed_', '');
+          await this.storage.deleteFixedCost(fixedId, this.currentMonth);
+        }
+
+        await this.storage.saveExpense(newExpense);
+        await this.loadData();
+
+        // 支出登録LINE通知
+        const currentCalc = calculateSettlement({
+          expenses: this.expenses,
+          fixedCosts: this.fixedCosts,
+          settings: this.settings,
+          currentMonth: this.currentMonth
+        });
+        this.lineService.notifyExpenseAdded(newExpense, currentCalc, this.settings);
+
+        close();
+        this.render();
+        this.attachEventListeners();
+        this.showToast(isEdit ? '更新できましたよ' : '記録できましたよ ⚡');
+      }
     });
   }
 

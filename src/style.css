@@ -368,23 +368,298 @@ body {
   color: var(--mochi-konga);
 }
 
-/* もちもちシーソーメーター */
+/* もちもち遊具風シーソー */
 .seesaw-container {
   width: 100%;
   background: var(--mochi-kinako);
   border: var(--line-main);
   border-radius: var(--radius-m);
-  padding: 18px 14px 14px;
+  padding: 16px 14px 12px;
   margin: 12px 0 18px;
   box-shadow: inset 0 2px 6px rgba(26, 26, 26, 0.05);
   position: relative;
+  overflow: hidden;
 }
 
 .seesaw-partners-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 8px;
+}
+
+.seesaw-status-tag {
+  font-size: 0.76rem;
+  font-weight: 800;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  background: #FFF;
+  border: 1.5px solid var(--mochi-ink);
+  color: var(--mochi-ink);
+  box-shadow: 0 1px 0 var(--mochi-ink);
+}
+
+.seesaw-status-tag.a-heavy {
+  background: var(--partner-a-tag);
+}
+
+.seesaw-status-tag.b-heavy {
+  background: var(--partner-b-tag);
+}
+
+/* 遊具風シーソーラッパー */
+.playground-seesaw-wrapper {
+  position: relative;
+  width: 100%;
+  height: 114px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 18px 0 6px;
+}
+
+/* 傾く板（全体） */
+.seesaw-plank {
+  position: absolute;
+  top: 48px;
+  width: 90%;
+  height: 14px;
+  transform-origin: 50% 50%;
+  transition: transform 0.8s var(--ease-mochi);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 2;
+}
+
+/* 木製板バー */
+.seesaw-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 14px;
+  background: #FFFDF7;
+  border: var(--line-main);
+  border-radius: var(--radius-full);
+  box-shadow: 0 3px 0 var(--mochi-ink);
+  z-index: 1;
+}
+
+/* 中心ピボットピン */
+.seesaw-pivot-pin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--mochi-yaki);
+  border: 2px solid var(--mochi-ink);
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  box-shadow: 0 1px 0 var(--mochi-ink);
+}
+
+/* 両端の席 */
+.seesaw-seat {
+  position: absolute;
+  top: -50px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.seesaw-seat.seat-a {
+  left: -8px;
+}
+
+.seesaw-seat.seat-b {
+  right: -8px;
+}
+
+.seesaw-dog-rider {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+
+.dog-rider-img {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 0 rgba(26, 26, 26, 0.2));
+  transition: transform 0.3s var(--ease-mochi);
+}
+
+.dog-rider-img.heavy-sink {
+  animation: sinkBob 2.5s ease-in-out infinite;
+}
+
+@keyframes sinkBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(3px); }
+}
+
+.seat-badge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--mochi-ink);
+  background: #FFF;
+  margin-top: -4px;
+  white-space: nowrap;
+  box-shadow: 0 1px 0 var(--mochi-ink);
+}
+
+.seat-badge.plus {
+  background: var(--mochi-yaki);
+  color: var(--mochi-ink);
+}
+
+.seat-badge.minus {
+  background: var(--mochi-milk);
+  color: var(--mochi-ink-sub);
+}
+
+/* ハンドル棒 */
+.seat-handle {
+  width: 8px;
+  height: 10px;
+  border: 2px solid var(--mochi-ink);
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  margin-top: 2px;
+}
+
+/* 三角の支点土台 */
+.seesaw-base-fulcrum {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 1;
+}
+
+.fulcrum-triangle {
+  width: 0;
+  height: 0;
+  border-left: 22px solid transparent;
+  border-right: 22px solid transparent;
+  border-bottom: 34px solid var(--mochi-yaki);
+  position: relative;
+  filter: drop-shadow(0 2px 0 var(--mochi-ink));
+}
+
+.fulcrum-ground-line {
+  width: 140px;
+  height: 4px;
+  background: var(--mochi-ink);
+  border-radius: var(--radius-full);
+  margin-top: -2px;
+}
+
+.seesaw-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--mochi-ink-sub);
+  margin-top: 8px;
+  font-weight: 700;
+}
+
+/* 変動費・固定費切替トグル（モーダル内） */
+.cost-type-toggle {
+  display: flex;
+  background: var(--mochi-kinako);
+  border: var(--line-main);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.cost-type-btn {
+  flex: 1;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-family: var(--font-base);
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--mochi-ink-sub);
+  cursor: pointer;
+  transition: all var(--dur-base) var(--ease-mochi);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.cost-type-btn.active {
+  background: var(--mochi-white);
+  color: var(--mochi-ink);
+  border: 2px solid var(--mochi-ink);
+  box-shadow: 0 2px 0 var(--mochi-ink);
+}
+
+/* 一括選択・削除バー */
+.list-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 10px;
+  padding: 0 4px;
+}
+
+.btn-select-mode {
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  border-radius: var(--radius-full);
+  box-shadow: 0 2px 0 var(--mochi-ink);
+}
+
+.bulk-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--mochi-kinako);
+  border: var(--line-main);
+  border-radius: var(--radius-m);
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  box-shadow: 0 3px 0 var(--mochi-ink);
+}
+
+.item-checkbox-wrapper {
+  margin-right: 10px;
+  display: flex;
+  align-items: center;
+}
+
+.item-checkbox {
+  width: 20px;
+  height: 20px;
+  accent-color: #EF4444;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.expense-card-item.selection-mode {
+  cursor: pointer;
+}
+
+.expense-card-item.selection-mode.selected {
+  background: #FFF7ED;
+  border-color: #F97316;
 }
 
 .partner-pill {
@@ -405,60 +680,6 @@ body {
 
 .partner-pill.b {
   background: var(--partner-b-tag);
-}
-
-/* シーソーのバー */
-.seesaw-board {
-  width: 100%;
-  height: 18px;
-  background: #FFF;
-  border: var(--line-main);
-  border-radius: var(--radius-full);
-  position: relative;
-  overflow: visible;
-  margin: 16px 0 12px;
-}
-
-.seesaw-fulcrum {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  width: 0;
-  height: 0;
-  border-left: 10px solid transparent;
-  border-right: 10px solid transparent;
-  border-bottom: 12px solid var(--mochi-ink);
-  transform: translateX(-50%);
-}
-
-.seesaw-center-line {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  width: 2.5px;
-  background: var(--mochi-yaki);
-  transform: translateX(-50%);
-}
-
-/* シーソーの上に乗るもちもち犬アイコン（ピン） */
-.seesaw-indicator-dog {
-  position: absolute;
-  top: -18px;
-  left: 50%;
-  transform: translateX(-50%);
-  transition: left 0.5s var(--ease-mochi);
-  pointer-events: none;
-  filter: drop-shadow(0 3px 0 var(--mochi-ink));
-}
-
-.seesaw-labels {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.75rem;
-  color: var(--mochi-ink-sub);
-  margin-top: 10px;
-  font-weight: 700;
 }
 
 /* 2人の負担状況（デュアルカード） */
