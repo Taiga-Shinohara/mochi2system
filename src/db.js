@@ -295,30 +295,13 @@ export class StorageService {
       }
 
       // 2. 支出 (Expenses) の同期
-      const { data: remoteExpenses } = await this.supabase
+      const { data: remoteExpenses, error: expErr } = await this.supabase
         .from('pairpay_expenses')
         .select('*')
         .order('date', { ascending: false });
 
-      const deletedExpIds = this.getDeletedIds('expenses');
-      const validRemoteExpenses = (remoteExpenses || []).filter(d => !deletedExpIds.has(String(d.id)));
-
-      // Supabase上に削除済みIDが残っていればバックグラウンドで再削除
-      const ghostExpenses = (remoteExpenses || []).filter(d => deletedExpIds.has(String(d.id)));
-      for (const g of ghostExpenses) {
-        this.supabase.from('pairpay_expenses').delete().eq('id', g.id).catch(() => {});
-      }
-
-      let localExpenses = [];
-      try {
-        const local = localStorage.getItem(LOCAL_STORAGE_KEYS.EXPENSES);
-        localExpenses = (local ? JSON.parse(local) : []).filter(e => !deletedExpIds.has(String(e.id)));
-      } catch {
-        localExpenses = [];
-      }
-
-      if (validRemoteExpenses.length > 0) {
-        const mapped = validRemoteExpenses.map(d => ({
+      if (!expErr && remoteExpenses) {
+        const mapped = remoteExpenses.map(d => ({
           id: d.id,
           title: d.title,
           amount: Number(d.amount),
@@ -330,48 +313,15 @@ export class StorageService {
           memo: d.memo
         }));
         localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify(mapped));
-      } else if (localExpenses.length > 0 && (!remoteExpenses || remoteExpenses.length === 0)) {
-        // クラウドが完全に空で、かつローカルに未登録データがある初回のみアップロード
-        for (const exp of localExpenses) {
-          await this.supabase.from('pairpay_expenses').upsert({
-            id: exp.id,
-            title: exp.title,
-            amount: exp.amount,
-            paid_by: exp.paidBy,
-            category: exp.category,
-            date: exp.date,
-            split_type: exp.splitType || 'default',
-            custom_ratio_a: exp.customRatioA,
-            memo: exp.memo || ''
-          });
-        }
-      } else {
-        localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify([]));
       }
 
       // 3. 固定費 (Fixed Costs) の同期
-      const { data: remoteFixed } = await this.supabase
+      const { data: remoteFixed, error: fixErr } = await this.supabase
         .from('pairpay_fixed_costs')
         .select('*');
 
-      const deletedFixedIds = this.getDeletedIds('fixed');
-      const validRemoteFixed = (remoteFixed || []).filter(d => !deletedFixedIds.has(String(d.id)));
-
-      const ghostFixed = (remoteFixed || []).filter(d => deletedFixedIds.has(String(d.id)));
-      for (const gf of ghostFixed) {
-        this.supabase.from('pairpay_fixed_costs').delete().eq('id', gf.id).catch(() => {});
-      }
-
-      let localFixed = [];
-      try {
-        const local = localStorage.getItem(LOCAL_STORAGE_KEYS.FIXED_COSTS);
-        localFixed = (local ? JSON.parse(local) : []).filter(f => !deletedFixedIds.has(String(f.id)));
-      } catch {
-        localFixed = [];
-      }
-
-      if (validRemoteFixed.length > 0) {
-        const mapped = validRemoteFixed.map(d => ({
+      if (!fixErr && remoteFixed) {
+        const mapped = remoteFixed.map(d => ({
           id: d.id,
           title: d.title,
           amount: Number(d.amount),
@@ -384,23 +334,6 @@ export class StorageService {
           active: d.active
         }));
         localStorage.setItem(LOCAL_STORAGE_KEYS.FIXED_COSTS, JSON.stringify(mapped));
-      } else if (localFixed.length > 0 && (!remoteFixed || remoteFixed.length === 0)) {
-        for (const fc of localFixed) {
-          await this.supabase.from('pairpay_fixed_costs').upsert({
-            id: fc.id,
-            title: fc.title,
-            amount: fc.amount,
-            paid_by: fc.paidBy,
-            category: fc.category,
-            split_type: fc.splitType || 'default',
-            custom_ratio_a: fc.customRatioA,
-            start_month: fc.startMonth || '2026-01',
-            end_month: fc.endMonth || null,
-            active: fc.active !== false
-          });
-        }
-      } else {
-        localStorage.setItem(LOCAL_STORAGE_KEYS.FIXED_COSTS, JSON.stringify([]));
       }
     } catch (syncErr) {
       console.warn('Initial sync warning:', syncErr);
@@ -434,7 +367,6 @@ export class StorageService {
     if (this.initPromise) {
       await this.initPromise;
     }
-    const deletedExpIds = this.getDeletedIds('expenses');
     if (this.isConnected && this.supabase) {
       try {
         const { data, error } = await this.supabase
@@ -442,8 +374,7 @@ export class StorageService {
           .select('*')
           .order('date', { ascending: false });
         if (!error && data) {
-          const valid = data.filter(d => !deletedExpIds.has(String(d.id)));
-          const mapped = valid.map(d => ({
+          const mapped = data.map(d => ({
             id: d.id,
             title: d.title,
             amount: Number(d.amount),
@@ -463,19 +394,19 @@ export class StorageService {
     }
     try {
       const local = localStorage.getItem(LOCAL_STORAGE_KEYS.EXPENSES);
-      const arr = local ? JSON.parse(local) : [];
-      return arr.filter(e => !deletedExpIds.has(String(e.id)));
+      return local ? JSON.parse(local) : [];
     } catch {
       return [];
     }
   }
 
   async saveExpense(expense) {
-    this.removeDeletedId('expenses', expense.id);
     const current = await this.getExpenses();
     const idx = current.findIndex(e => String(e.id) === String(expense.id));
+    const isUpdate = idx >= 0;
+
     let updated;
-    if (idx >= 0) {
+    if (isUpdate) {
       updated = [...current];
       updated[idx] = expense;
     } else {
@@ -485,7 +416,7 @@ export class StorageService {
 
     if (this.isConnected && this.supabase) {
       try {
-        await this.supabase.from('pairpay_expenses').upsert({
+        const payload = {
           id: expense.id,
           title: expense.title,
           amount: expense.amount,
@@ -495,7 +426,28 @@ export class StorageService {
           split_type: expense.splitType || 'default',
           custom_ratio_a: expense.customRatioA,
           memo: expense.memo || ''
-        });
+        };
+
+        if (isUpdate) {
+          // 既存項目の確実な更新（UPDATEを発行して新規行の増殖を防止）
+          const { error } = await this.supabase
+            .from('pairpay_expenses')
+            .update(payload)
+            .eq('id', expense.id);
+          if (error) {
+            console.warn('Supabase update failed, attempting upsert', error);
+            await this.supabase.from('pairpay_expenses').upsert(payload, { onConflict: 'id' });
+          }
+        } else {
+          // 新規項目の作成
+          const { error } = await this.supabase
+            .from('pairpay_expenses')
+            .insert(payload);
+          if (error) {
+            console.warn('Supabase insert failed, attempting upsert', error);
+            await this.supabase.from('pairpay_expenses').upsert(payload, { onConflict: 'id' });
+          }
+        }
       } catch (e) {
         console.error('Supabase saveExpense error', e);
       }
@@ -505,22 +457,24 @@ export class StorageService {
 
   async deleteExpense(id) {
     const strId = String(id);
-    this.addDeletedId('expenses', strId);
-
-    const current = await this.getExpenses();
-    const updated = current.filter(e => String(e.id) !== strId);
-    localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify(updated));
 
     if (this.isConnected && this.supabase) {
       try {
         const { error } = await this.supabase.from('pairpay_expenses').delete().eq('id', strId);
         if (error) {
           console.error('Supabase deleteExpense error:', error);
+          if (error.code === '42501' || error.message?.includes('violates row-level security')) {
+            alert('⚠️ Supabaseの権限設定（RLS）によりクラウド側での削除が拒否されました。\n「同期設定」画面の最新SQLを実行してRLSを無効化してください。');
+          }
         }
       } catch (e) {
         console.error('Supabase deleteExpense exception:', e);
       }
     }
+
+    const current = await this.getExpenses();
+    const updated = current.filter(e => String(e.id) !== strId);
+    localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify(updated));
     return updated;
   }
 
@@ -529,13 +483,11 @@ export class StorageService {
     if (this.initPromise) {
       await this.initPromise;
     }
-    const deletedFixedIds = this.getDeletedIds('fixed');
     if (this.isConnected && this.supabase) {
       try {
         const { data, error } = await this.supabase.from('pairpay_fixed_costs').select('*');
         if (!error && data) {
-          const valid = data.filter(d => !deletedFixedIds.has(String(d.id)));
-          const mapped = valid.map(d => ({
+          const mapped = data.map(d => ({
             id: d.id,
             title: d.title,
             amount: Number(d.amount),
@@ -556,19 +508,19 @@ export class StorageService {
     }
     try {
       const local = localStorage.getItem(LOCAL_STORAGE_KEYS.FIXED_COSTS);
-      const arr = local ? JSON.parse(local) : [];
-      return arr.filter(f => !deletedFixedIds.has(String(f.id)));
+      return local ? JSON.parse(local) : [];
     } catch {
       return [];
     }
   }
 
   async saveFixedCost(cost) {
-    this.removeDeletedId('fixed', cost.id);
     const current = await this.getFixedCosts();
     const idx = current.findIndex(c => String(c.id) === String(cost.id));
+    const isUpdate = idx >= 0;
+
     let updated;
-    if (idx >= 0) {
+    if (isUpdate) {
       updated = [...current];
       updated[idx] = cost;
     } else {
@@ -578,7 +530,7 @@ export class StorageService {
 
     if (this.isConnected && this.supabase) {
       try {
-        await this.supabase.from('pairpay_fixed_costs').upsert({
+        const payload = {
           id: cost.id,
           title: cost.title,
           amount: cost.amount,
@@ -589,7 +541,28 @@ export class StorageService {
           start_month: cost.startMonth || '2026-01',
           end_month: cost.endMonth || null,
           active: cost.active !== false
-        });
+        };
+
+        if (isUpdate) {
+          // 既存固定費の確実な更新（UPDATEを発行）
+          const { error } = await this.supabase
+            .from('pairpay_fixed_costs')
+            .update(payload)
+            .eq('id', cost.id);
+          if (error) {
+            console.warn('Supabase update fixed cost failed, attempting upsert', error);
+            await this.supabase.from('pairpay_fixed_costs').upsert(payload, { onConflict: 'id' });
+          }
+        } else {
+          // 新規固定費の作成
+          const { error } = await this.supabase
+            .from('pairpay_fixed_costs')
+            .insert(payload);
+          if (error) {
+            console.warn('Supabase insert fixed cost failed, attempting upsert', error);
+            await this.supabase.from('pairpay_fixed_costs').upsert(payload, { onConflict: 'id' });
+          }
+        }
       } catch (e) {
         console.error('Supabase saveFixedCost error', e);
       }
@@ -612,21 +585,22 @@ export class StorageService {
       target.endMonth = fromMonth;
       return await this.saveFixedCost(target);
     } else {
-      // 登録月に削除、または完全削除
-      this.addDeletedId('fixed', strId);
-      const updated = current.filter(c => String(c.id) !== strId);
-      localStorage.setItem(LOCAL_STORAGE_KEYS.FIXED_COSTS, JSON.stringify(updated));
-
       if (this.isConnected && this.supabase) {
         try {
           const { error } = await this.supabase.from('pairpay_fixed_costs').delete().eq('id', strId);
           if (error) {
             console.error('Supabase deleteFixedCost error:', error);
+            if (error.code === '42501' || error.message?.includes('violates row-level security')) {
+              alert('⚠️ Supabaseの権限設定（RLS）によりクラウド側での削除が拒否されました。\n「同期設定」画面の最新SQLを実行してRLSを無効化してください。');
+            }
           }
         } catch (e) {
           console.error('Supabase deleteFixedCost exception:', e);
         }
       }
+
+      const updated = current.filter(c => String(c.id) !== strId);
+      localStorage.setItem(LOCAL_STORAGE_KEYS.FIXED_COSTS, JSON.stringify(updated));
       return updated;
     }
   }

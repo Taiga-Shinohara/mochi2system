@@ -695,10 +695,10 @@ class MochiBudgetApp {
         // 通常モードの場合：編集モーダルを開く
         if (isFixed) {
           const realId = id.replace('fixed_', '');
-          const target = this.fixedCosts.find(f => f.id === realId);
+          const target = this.fixedCosts.find(f => String(f.id) === String(realId));
           if (target) this.openExpenseModal(target, 'fixed');
         } else {
-          const target = this.expenses.find(x => x.id === id);
+          const target = this.expenses.find(x => String(x.id) === String(id));
           if (target) this.openExpenseModal(target, 'variable');
         }
       });
@@ -711,8 +711,14 @@ class MochiBudgetApp {
     const { partnerAName, partnerBName, defaultRatioA } = this.settings;
 
     let initialCostType = defaultType || 'variable';
+    let editId = '';
+    let originalType = '';
+
     if (itemToEdit) {
-      initialCostType = (itemToEdit.startMonth || itemToEdit.isFixed) ? 'fixed' : 'variable';
+      editId = itemToEdit.fixedCostId || (itemToEdit.id ? String(itemToEdit.id).replace('fixed_', '') : '');
+      const isFixedItem = Boolean(itemToEdit.startMonth || itemToEdit.isFixed || defaultType === 'fixed');
+      initialCostType = isFixedItem ? 'fixed' : 'variable';
+      originalType = initialCostType;
     }
 
     const initialPaidBy = itemToEdit ? itemToEdit.paidBy : 'A';
@@ -731,6 +737,10 @@ class MochiBudgetApp {
             <button class="icon-btn" id="btnCloseExpenseModal">✕</button>
           </div>
           <form id="expenseForm" class="modal-body">
+            <!-- 編集対象のIDと元の種別を確実に保持 -->
+            <input type="hidden" id="formEditId" value="${editId}" />
+            <input type="hidden" id="formOriginalType" value="${originalType}" />
+
             <!-- 変動費・固定費の選択トグル（デフォルトは変動費） -->
             <div class="form-group">
               <label class="form-label">支出の種類</label>
@@ -936,12 +946,11 @@ class MochiBudgetApp {
     });
 
     overlay.querySelector('#btnDeleteExpense')?.addEventListener('click', async () => {
-      const wasFixed = itemToEdit && (itemToEdit.startMonth || itemToEdit.isFixed);
-      if (wasFixed) {
+      if (!editId) return;
+      if (originalType === 'fixed') {
         const msg = `この固定費を【${this.formatMonthDisplay(this.currentMonth)}以降】削除しますか？\n（過去の月の記録は残ります）`;
         if (confirm(msg)) {
-          const fixedId = itemToEdit.fixedCostId || itemToEdit.id.replace('fixed_', '');
-          await this.storage.deleteFixedCost(fixedId, this.currentMonth);
+          await this.storage.deleteFixedCost(editId, this.currentMonth);
           await this.loadData();
           close();
           this.render();
@@ -950,7 +959,7 @@ class MochiBudgetApp {
         }
       } else {
         if (confirm('この記録を消してもよろしいですか？')) {
-          await this.storage.deleteExpense(itemToEdit.id);
+          await this.storage.deleteExpense(editId);
           await this.loadData();
           close();
           this.render();
@@ -972,12 +981,23 @@ class MochiBudgetApp {
 
       if (!title || !amount) return;
 
+      const isUpdating = Boolean(editId);
+
       if (currentType === 'fixed') {
         const startMonth = overlay.querySelector('#formFixedStartMonth').value || this.currentMonth;
+        let fixedId;
+
+        if (isUpdating && originalType === 'fixed') {
+          fixedId = editId; // 既存固定費のIDをそのまま引き継ぐ（UPDATE）
+        } else {
+          fixedId = `fx_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+          if (isUpdating && originalType === 'variable') {
+            await this.storage.deleteExpense(editId);
+          }
+        }
+
         const newFixed = {
-          id: (itemToEdit && (itemToEdit.startMonth || itemToEdit.isFixed))
-            ? (itemToEdit.fixedCostId || itemToEdit.id.replace('fixed_', ''))
-            : `fx_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+          id: fixedId,
           title,
           amount,
           paidBy,
@@ -989,33 +1009,39 @@ class MochiBudgetApp {
           active: true
         };
 
-        // もし元が変動費だった場合、旧変動費を削除
-        if (isEdit && !itemToEdit.startMonth && !itemToEdit.isFixed) {
-          await this.storage.deleteExpense(itemToEdit.id);
-        }
-
         await this.storage.saveFixedCost(newFixed);
         await this.loadData();
 
-        // 固定費登録LINE通知
-        const currentCalc = calculateSettlement({
-          expenses: this.expenses,
-          fixedCosts: this.fixedCosts,
-          settings: this.settings,
-          currentMonth: this.currentMonth
-        });
-        this.lineService.notifyFixedCostAdded(newFixed, currentCalc, this.settings);
+        if (!isUpdating) {
+          // 新規登録時のみLINE通知
+          const currentCalc = calculateSettlement({
+            expenses: this.expenses,
+            fixedCosts: this.fixedCosts,
+            settings: this.settings,
+            currentMonth: this.currentMonth
+          });
+          this.lineService.notifyFixedCostAdded(newFixed, currentCalc, this.settings);
+        }
 
         close();
         this.render();
         this.attachEventListeners();
-        this.showToast(isEdit ? '固定費を更新しましたよ' : '固定費を記録しましたよ 🔄');
+        this.showToast(isUpdating ? '固定費を更新しましたよ' : '固定費を記録しましたよ 🔄');
       } else {
         const date = overlay.querySelector('#formDate').value || getTodayString();
+        let expenseId;
+
+        if (isUpdating && originalType === 'variable') {
+          expenseId = editId; // 既存支出のIDをそのまま引き継ぐ（UPDATE）
+        } else {
+          expenseId = `exp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+          if (isUpdating && originalType === 'fixed') {
+            await this.storage.deleteFixedCost(editId, this.currentMonth);
+          }
+        }
+
         const newExpense = {
-          id: (itemToEdit && !itemToEdit.startMonth && !itemToEdit.isFixed)
-            ? itemToEdit.id
-            : `exp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+          id: expenseId,
           title,
           amount,
           paidBy,
@@ -1025,28 +1051,24 @@ class MochiBudgetApp {
           customRatioA
         };
 
-        // もし元が固定費だった場合、旧固定費を今月以降削除
-        if (isEdit && (itemToEdit.startMonth || itemToEdit.isFixed)) {
-          const fixedId = itemToEdit.fixedCostId || itemToEdit.id.replace('fixed_', '');
-          await this.storage.deleteFixedCost(fixedId, this.currentMonth);
-        }
-
         await this.storage.saveExpense(newExpense);
         await this.loadData();
 
-        // 支出登録LINE通知
-        const currentCalc = calculateSettlement({
-          expenses: this.expenses,
-          fixedCosts: this.fixedCosts,
-          settings: this.settings,
-          currentMonth: this.currentMonth
-        });
-        this.lineService.notifyExpenseAdded(newExpense, currentCalc, this.settings);
+        if (!isUpdating) {
+          // 新規登録時のみLINE通知
+          const currentCalc = calculateSettlement({
+            expenses: this.expenses,
+            fixedCosts: this.fixedCosts,
+            settings: this.settings,
+            currentMonth: this.currentMonth
+          });
+          this.lineService.notifyExpenseAdded(newExpense, currentCalc, this.settings);
+        }
 
         close();
         this.render();
         this.attachEventListeners();
-        this.showToast(isEdit ? '更新できましたよ' : '記録できましたよ ⚡');
+        this.showToast(isUpdating ? '更新できましたよ' : '記録できましたよ ⚡');
       }
     });
   }
@@ -1523,6 +1545,19 @@ class MochiBudgetApp {
                 <pre style="background: #FFF; padding: 10px; border-radius: 8px; border: 1.5px solid var(--mochi-ink); max-height: 140px; overflow-x: auto; font-size: 0.7rem;">${SUPABASE_SETUP_SQL}</pre>
               </div>
             </details>
+
+            <!-- 削除や更新ができない場合のRLS解除案内 -->
+            <div style="background: #FEF3C7; border: 1.5px solid #D97706; border-radius: var(--radius-m); padding: 10px 12px; font-size: 0.76rem; line-height: 1.5; margin-top: 10px;">
+              <div style="font-weight: 800; color: #92400E; margin-bottom: 3px;">
+                ⚠️ 削除や更新がクラウドに反映されない場合（RLS権限）
+              </div>
+              <div style="color: #78350F; margin-bottom: 6px; font-size: 0.72rem;">
+                SupabaseのRow Level Security (RLS) で削除がブロックされている可能性があります。下のSQLをSupabaseのSQL Editorで一度実行すると全端末で正常に同期・削除できるようになります。
+              </div>
+              <button type="button" class="btn-secondary" id="btnCopyDisableRls" style="padding: 4px 10px; font-size: 0.72rem; background: #FFF;">
+                ⚡ RLS無効化SQLをコピー
+              </button>
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn-secondary" id="btnCancelSync">やめる</button>
@@ -1552,6 +1587,13 @@ class MochiBudgetApp {
     overlay.querySelector('#btnCopySql')?.addEventListener('click', () => {
       navigator.clipboard.writeText(SUPABASE_SETUP_SQL).then(() => {
         this.showToast('SQLをコピーしましたよ');
+      });
+    });
+
+    overlay.querySelector('#btnCopyDisableRls')?.addEventListener('click', () => {
+      const rlsSql = `alter table public.pairpay_expenses disable row level security;\nalter table public.pairpay_fixed_costs disable row level security;\nalter table public.pairpay_settings disable row level security;`;
+      navigator.clipboard.writeText(rlsSql).then(() => {
+        this.showToast('RLS解除SQLをコピーしましたよ！');
       });
     });
 
