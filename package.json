@@ -14,7 +14,6 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
     "canvas-confetti": "^1.9.4",
-    "lucide": "^1.59.0",
-    "tesseract.js": "^7.0.0"
+    "lucide": "^1.59.0"
   }
 }

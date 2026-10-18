@@ -3,7 +3,6 @@ import confetti from 'canvas-confetti';
 import { StorageService, CATEGORIES, SUPABASE_SETUP_SQL } from './db.js';
 import { calculateSettlement, generateShareText } from './calculator.js';
 import { renderMochiDog, renderCaption } from './characters.js';
-import { OcrService } from './ocrService.js';
 import { LineService } from './lineService.js';
 
 function getTodayString() {
@@ -521,16 +520,6 @@ class MochiBudgetApp {
             <button class="icon-btn" id="btnCloseExpenseModal">✕</button>
           </div>
           <form id="expenseForm" class="modal-body">
-            <!-- 【フィードバック2】レシート・領収書OCR読み取りボックス -->
-            ${!isEdit ? `
-              <div class="ocr-upload-box" id="ocrUploadArea" style="background: var(--mochi-kinako); border: 2px dashed var(--mochi-ink); border-radius: var(--radius-m); padding: 14px; text-align: center; cursor: pointer;">
-                <input type="file" id="receiptFileInput" accept="image/*,.pdf" style="display: none;" />
-                <div style="font-size: 1.6rem; margin-bottom: 2px;">📷</div>
-                <div style="font-weight: 900; font-size: 0.9rem;" id="ocrStatusText">レシート・領収書の写真を送る</div>
-                <div style="font-size: 0.75rem; color: var(--mochi-ink-sub);">金額・店名・日付を自動で読み取ります（Freee風OCR）</div>
-              </div>
-            ` : ''}
-
             <div class="form-group">
               <label class="form-label">どちらが支払いましたか？</label>
               <div class="payer-toggle-group">
@@ -613,52 +602,6 @@ class MochiBudgetApp {
 
     overlay.querySelector('#btnCloseExpenseModal').addEventListener('click', close);
     overlay.querySelector('#btnCancelExpense').addEventListener('click', close);
-
-    // OCR ファイル選択と読み取り
-    const ocrArea = overlay.querySelector('#ocrUploadArea');
-    const fileInput = overlay.querySelector('#receiptFileInput');
-    const ocrStatus = overlay.querySelector('#ocrStatusText');
-
-    if (ocrArea && fileInput) {
-      ocrArea.addEventListener('click', () => fileInput.click());
-      fileInput.addEventListener('change', async (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        ocrStatus.textContent = '⏳ もちもち読み取り中...';
-        ocrArea.style.opacity = '0.7';
-
-        try {
-          const result = await OcrService.scanReceipt(file, (msg) => {
-            ocrStatus.textContent = msg;
-          });
-
-          if (result.amount) {
-            overlay.querySelector('#formAmount').value = result.amount;
-          }
-          if (result.title) {
-            overlay.querySelector('#formTitle').value = result.title;
-          }
-          if (result.date) {
-            overlay.querySelector('#formDate').value = result.date;
-          }
-          if (result.category) {
-            overlay.querySelector('#formCategory').value = result.category;
-            overlay.querySelectorAll('.category-option-btn').forEach(btn => {
-              btn.classList.toggle('selected', btn.dataset.cat === result.category);
-            });
-          }
-
-          ocrStatus.textContent = '✨ 読み取り完了！自動入力しました';
-          this.showToast('レシートを読み取りましたよ');
-        } catch (err) {
-          console.error('OCR Error', err);
-          ocrStatus.textContent = 'あれれ、読み取れませんでした';
-        } finally {
-          ocrArea.style.opacity = '1';
-        }
-      });
-    }
 
     const btnPayerA = overlay.querySelector('#btnPayerA');
     const btnPayerB = overlay.querySelector('#btnPayerB');
