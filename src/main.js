@@ -37,6 +37,22 @@ class MochiBudgetApp {
   }
 
   async init() {
+    // 1. URLパラメータからのSupabaseワンタップ連携チェック
+    const params = new URLSearchParams(window.location.search);
+    const sharedUrl = params.get('supabase_url');
+    const sharedKey = params.get('supabase_key');
+    if (sharedUrl && sharedKey) {
+      const res = await this.storage.saveSupabaseConfig(sharedUrl, sharedKey);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      if (res && res.success) {
+        this.showToast('🎉 クラウド同期につながりました！');
+      } else {
+        alert(res?.error || 'Supabaseへの接続に失敗しました');
+      }
+    } else {
+      await this.storage.initPromise;
+    }
+
     this.storage.setSyncCallback(async () => {
       this.showToast('もちもち同期しましたよ');
       await this.loadData();
@@ -46,7 +62,8 @@ class MochiBudgetApp {
 
     await this.loadData();
 
-    if (this.expenses.length === 0 && this.fixedCosts.length === 0) {
+    // デモデータのロードは、Supabase未接続かつローカルにも一切データがない初回のみ
+    if (!this.storage.isConnected && this.expenses.length === 0 && this.fixedCosts.length === 0) {
       await this.storage.loadDemoData(this.currentMonth);
       await this.loadData();
     }
@@ -183,7 +200,7 @@ class MochiBudgetApp {
 
       <!-- 月ナビゲーション -->
       <div class="month-nav-container">
-        <div style="display: flex; align-items: center; gap: 8px;">
+        <div class="month-nav-left">
           <div class="month-selector">
             <button class="month-btn" id="btnPrevMonth">◀</button>
             <span class="current-month-label">${this.formatMonthDisplay(this.currentMonth)}</span>
@@ -191,7 +208,7 @@ class MochiBudgetApp {
           </div>
           <!-- 【フィードバック1】当月じゃない時のみ表示される「現在の月に戻る」ボタン -->
           ${isViewingOtherMonth ? `
-            <button class="btn-secondary" id="btnReturnToCurrentMonth" style="padding: 4px 12px; font-size: 0.78rem; border-radius: var(--radius-full); box-shadow: 0 2px 0 var(--mochi-ink);">
+            <button class="btn-secondary btn-return-month" id="btnReturnToCurrentMonth">
               今月に戻る 📅
             </button>
           ` : ''}
@@ -1076,6 +1093,20 @@ class MochiBudgetApp {
               状態: ${isConnected ? 'クラウドと同期中です 🟢' : 'この端末だけに保存されています 🟡'}
             </div>
 
+            ${isConnected ? `
+              <div style="background: var(--mochi-milk); border: var(--line-main); border-radius: var(--radius-m); padding: 14px; box-shadow: 0 3px 0 var(--mochi-ink);">
+                <div style="font-weight: 800; font-size: 0.88rem; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                  <span>🐾</span><span>パートナーにかんたん連携URLを送る</span>
+                </div>
+                <div style="font-size: 0.78rem; color: var(--mochi-ink-sub); margin-bottom: 10px; line-height: 1.5;">
+                  下のボタンを押してLINE等でURLを送ると、パートナー側はURLを開くだけで自動的に同じデータと同期されます！
+                </div>
+                <button type="button" class="btn-primary" id="btnCopyInviteLink" style="width: 100%; padding: 8px 12px; font-size: 0.82rem; justify-content: center;">
+                  🔗 招待リンクをコピーする
+                </button>
+              </div>
+            ` : ''}
+
             <div class="form-group">
               <label class="form-label">Supabase URL</label>
               <input type="text" id="syncUrl" class="form-input" placeholder="https://xxxxxxxx.supabase.co" value="${cfg.url || ''}" />
@@ -1112,6 +1143,17 @@ class MochiBudgetApp {
     overlay.querySelector('#btnCloseSyncModal').addEventListener('click', close);
     overlay.querySelector('#btnCancelSync').addEventListener('click', close);
 
+    overlay.querySelector('#btnCopyInviteLink')?.addEventListener('click', () => {
+      const inviteUrl = `${window.location.origin}${window.location.pathname}?supabase_url=${encodeURIComponent(cfg.url)}&supabase_key=${encodeURIComponent(cfg.key)}`;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(inviteUrl).then(() => {
+          this.showToast('招待リンクをコピーしましたよ');
+        });
+      } else {
+        prompt('このURLをパートナーに送ってください:', inviteUrl);
+      }
+    });
+
     overlay.querySelector('#btnCopySql')?.addEventListener('click', () => {
       navigator.clipboard.writeText(SUPABASE_SETUP_SQL).then(() => {
         this.showToast('SQLをコピーしましたよ');
@@ -1122,18 +1164,27 @@ class MochiBudgetApp {
       const url = overlay.querySelector('#syncUrl').value.trim();
       const key = overlay.querySelector('#syncKey').value.trim();
 
-      const success = await this.storage.saveSupabaseConfig(url, key);
-      await this.loadData();
-      close();
-      this.render();
-      this.attachEventListeners();
+      const btn = overlay.querySelector('#btnSaveSync');
+      btn.disabled = true;
+      btn.textContent = '接続中...';
 
-      if (success) {
-        this.showToast('つながりましたよ！');
-      } else if (!url && !key) {
-        this.showToast('端末保存に戻しました');
+      const res = await this.storage.saveSupabaseConfig(url, key);
+      btn.disabled = false;
+      btn.textContent = 'つなぐ';
+
+      if (res && res.success) {
+        await this.loadData();
+        close();
+        this.render();
+        this.attachEventListeners();
+
+        if (url && key) {
+          this.showToast('つながりましたよ！🟢');
+        } else {
+          this.showToast('端末保存に戻しました');
+        }
       } else {
-        this.showToast('あれれ、ちょっとつぶれました');
+        alert(res?.error || '接続に失敗しました。URLとAnon Keyを確認してください。');
       }
     });
   }

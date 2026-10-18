@@ -84,7 +84,7 @@ export class StorageService {
     this.channel = null;
 
     this.settings = this.loadSettings();
-    this.initSupabaseIfConfigured();
+    this.initPromise = this.initSupabaseIfConfigured();
   }
 
   setSyncCallback(cb) {
@@ -113,7 +113,7 @@ export class StorageService {
   saveSettings(newSettings) {
     this.settings = { ...this.settings, ...newSettings };
     localStorage.setItem(LOCAL_STORAGE_KEYS.SETTINGS, JSON.stringify(this.settings));
-    if (this.supabase) {
+    if (this.supabase && this.isConnected) {
       this.supabase.from('pairpay_settings').upsert({
         id: 'global_settings',
         partner_a_name: this.settings.partnerAName,
@@ -139,36 +139,208 @@ export class StorageService {
   }
 
   async saveSupabaseConfig(url, key) {
-    localStorage.setItem(LOCAL_STORAGE_KEYS.SUPABASE_CONFIG, JSON.stringify({ url, key }));
-    return await this.initSupabase(url, key);
+    const res = await this.initSupabase(url, key);
+    if (res.success) {
+      if (url && key) {
+        localStorage.setItem(LOCAL_STORAGE_KEYS.SUPABASE_CONFIG, JSON.stringify({ url, key }));
+      } else {
+        localStorage.removeItem(LOCAL_STORAGE_KEYS.SUPABASE_CONFIG);
+      }
+    }
+    return res;
   }
 
   async initSupabaseIfConfigured() {
     const { url, key } = this.getSupabaseConfig();
     if (url && key) {
-      await this.initSupabase(url, key);
+      return await this.initSupabase(url, key);
     }
+    return { success: false, reason: 'NOT_CONFIGURED' };
   }
 
   async initSupabase(url, key) {
     if (!url || !key) {
+      if (this.channel && this.supabase) {
+        this.supabase.removeChannel(this.channel);
+      }
       this.supabase = null;
       this.isConnected = false;
-      return false;
+      return { success: true, disconnected: true };
     }
     try {
-      this.supabase = createClient(url, key);
-      const { error } = await this.supabase.from('pairpay_expenses').select('id').limit(1);
+      const client = createClient(url, key);
+      // テーブル接続テスト
+      const { data, error } = await client.from('pairpay_expenses').select('id').limit(1);
       if (error && error.code !== 'PGRST116') {
-        console.warn('Supabase test select error', error);
+        console.error('Supabase test select error', error);
+        this.isConnected = false;
+        this.supabase = null;
+        if (error.code === '42P01' || error.message?.includes('does not exist')) {
+          return {
+            success: false,
+            errorType: 'TABLE_NOT_FOUND',
+            error: 'テーブルが作成されていません。SQL Editorでテーブル作成SQLを実行してください。'
+          };
+        }
+        return {
+          success: false,
+          errorType: 'AUTH_OR_URL_ERROR',
+          error: `接続エラー: ${error.message || 'URLまたはキーが不正です'}`
+        };
       }
+
+      this.supabase = client;
       this.isConnected = true;
       this.setupRealtimeSubscription();
-      return true;
+
+      // 初期同期（Supabaseとローカルの双方向データ同期）
+      await this.syncInitialData();
+
+      return { success: true };
     } catch (err) {
       console.error('Supabase init failed', err);
       this.isConnected = false;
-      return false;
+      this.supabase = null;
+      return { success: false, errorType: 'EXCEPTION', error: err.message || '接続に失敗しました' };
+    }
+  }
+
+  /**
+   * Supabase接続直後の初期同期
+   * - Supabaseにデータがあれば取得してローカルに反映
+   * - Supabaseが空でローカルにデータがあれば、既存データをSupabaseへ移行アップロード
+   * - 設定（名前、比率等）も同期
+   */
+  async syncInitialData() {
+    if (!this.isConnected || !this.supabase) return;
+
+    try {
+      // 1. 設定の同期
+      const { data: remoteSettings } = await this.supabase
+        .from('pairpay_settings')
+        .select('*')
+        .eq('id', 'global_settings')
+        .maybeSingle();
+
+      if (remoteSettings) {
+        this.settings = {
+          ...this.settings,
+          partnerAName: remoteSettings.partner_a_name || this.settings.partnerAName,
+          partnerBName: remoteSettings.partner_b_name || this.settings.partnerBName,
+          defaultRatioA: Number(remoteSettings.default_ratio_a) || this.settings.defaultRatioA,
+          defaultRatioB: Number(remoteSettings.default_ratio_b) || this.settings.defaultRatioB,
+          lineToken: remoteSettings.line_token || this.settings.lineToken,
+          lineTo: remoteSettings.line_to || this.settings.lineTo,
+          reminderDay: Number(remoteSettings.reminder_day) || this.settings.reminderDay,
+          lineAutoNotify: remoteSettings.line_auto_notify !== false
+        };
+        localStorage.setItem(LOCAL_STORAGE_KEYS.SETTINGS, JSON.stringify(this.settings));
+      } else {
+        // クラウド側に設定がなければローカル設定を保存
+        await this.supabase.from('pairpay_settings').upsert({
+          id: 'global_settings',
+          partner_a_name: this.settings.partnerAName,
+          partner_b_name: this.settings.partnerBName,
+          default_ratio_a: this.settings.defaultRatioA,
+          default_ratio_b: this.settings.defaultRatioB,
+          line_token: this.settings.lineToken || '',
+          line_to: this.settings.lineTo || '',
+          reminder_day: this.settings.reminderDay || 25,
+          line_auto_notify: this.settings.lineAutoNotify !== false,
+          updated_at: new Date().toISOString()
+        });
+      }
+
+      // 2. 支出 (Expenses) の同期
+      const { data: remoteExpenses } = await this.supabase
+        .from('pairpay_expenses')
+        .select('*')
+        .order('date', { ascending: false });
+
+      let localExpenses = [];
+      try {
+        const local = localStorage.getItem(LOCAL_STORAGE_KEYS.EXPENSES);
+        localExpenses = local ? JSON.parse(local) : [];
+      } catch {
+        localExpenses = [];
+      }
+
+      if (remoteExpenses && remoteExpenses.length > 0) {
+        // クラウドにデータがある場合、クラウドを正とする
+        const mapped = remoteExpenses.map(d => ({
+          id: d.id,
+          title: d.title,
+          amount: Number(d.amount),
+          paidBy: d.paid_by,
+          category: d.category,
+          date: d.date,
+          splitType: d.split_type,
+          customRatioA: d.custom_ratio_a != null ? Number(d.custom_ratio_a) : null,
+          memo: d.memo
+        }));
+        localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify(mapped));
+      } else if (localExpenses.length > 0) {
+        // クラウドが空で、ローカルにデータがあれば、クラウドにアップロード移行
+        for (const exp of localExpenses) {
+          await this.supabase.from('pairpay_expenses').upsert({
+            id: exp.id,
+            title: exp.title,
+            amount: exp.amount,
+            paid_by: exp.paidBy,
+            category: exp.category,
+            date: exp.date,
+            split_type: exp.splitType || 'default',
+            custom_ratio_a: exp.customRatioA,
+            memo: exp.memo || ''
+          });
+        }
+      }
+
+      // 3. 固定費 (Fixed Costs) の同期
+      const { data: remoteFixed } = await this.supabase
+        .from('pairpay_fixed_costs')
+        .select('*');
+
+      let localFixed = [];
+      try {
+        const local = localStorage.getItem(LOCAL_STORAGE_KEYS.FIXED_COSTS);
+        localFixed = local ? JSON.parse(local) : [];
+      } catch {
+        localFixed = [];
+      }
+
+      if (remoteFixed && remoteFixed.length > 0) {
+        const mapped = remoteFixed.map(d => ({
+          id: d.id,
+          title: d.title,
+          amount: Number(d.amount),
+          paidBy: d.paid_by,
+          category: d.category,
+          splitType: d.split_type,
+          customRatioA: d.custom_ratio_a != null ? Number(d.custom_ratio_a) : null,
+          startMonth: d.start_month || '2026-01',
+          endMonth: d.end_month || null,
+          active: d.active
+        }));
+        localStorage.setItem(LOCAL_STORAGE_KEYS.FIXED_COSTS, JSON.stringify(mapped));
+      } else if (localFixed.length > 0) {
+        for (const fc of localFixed) {
+          await this.supabase.from('pairpay_fixed_costs').upsert({
+            id: fc.id,
+            title: fc.title,
+            amount: fc.amount,
+            paid_by: fc.paidBy,
+            category: fc.category,
+            split_type: fc.splitType || 'default',
+            custom_ratio_a: fc.customRatioA,
+            start_month: fc.startMonth || '2026-01',
+            end_month: fc.endMonth || null,
+            active: fc.active !== false
+          });
+        }
+      }
+    } catch (syncErr) {
+      console.warn('Initial sync warning:', syncErr);
     }
   }
 
@@ -179,13 +351,16 @@ export class StorageService {
     }
     this.channel = this.supabase
       .channel('pairpay_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pairpay_expenses' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pairpay_expenses' }, async () => {
+        await this.syncInitialData();
         if (this.onSyncCallback) this.onSyncCallback('expenses');
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pairpay_fixed_costs' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pairpay_fixed_costs' }, async () => {
+        await this.syncInitialData();
         if (this.onSyncCallback) this.onSyncCallback('fixed_costs');
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pairpay_settings' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pairpay_settings' }, async () => {
+        await this.syncInitialData();
         if (this.onSyncCallback) this.onSyncCallback('settings');
       })
       .subscribe();
@@ -193,6 +368,9 @@ export class StorageService {
 
   // 支出 (Expenses)
   async getExpenses() {
+    if (this.initPromise) {
+      await this.initPromise;
+    }
     if (this.isConnected && this.supabase) {
       try {
         const { data, error } = await this.supabase
@@ -275,6 +453,9 @@ export class StorageService {
 
   // 固定費 (Fixed Costs)
   async getFixedCosts() {
+    if (this.initPromise) {
+      await this.initPromise;
+    }
     if (this.isConnected && this.supabase) {
       try {
         const { data, error } = await this.supabase.from('pairpay_fixed_costs').select('*');

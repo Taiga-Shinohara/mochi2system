@@ -205,6 +205,14 @@ body {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 16px;
+  gap: 8px;
+}
+
+.month-nav-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .month-selector {
@@ -216,6 +224,14 @@ body {
   border-radius: var(--radius-full);
   padding: 4px 10px;
   box-shadow: 0 3px 0 var(--mochi-ink);
+}
+
+.btn-return-month {
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  border-radius: var(--radius-full);
+  box-shadow: 0 2px 0 var(--mochi-ink);
+  white-space: nowrap;
 }
 
 .month-btn {
@@ -245,12 +261,28 @@ body {
 }
 
 .quick-stats-badge {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: var(--mochi-ink-sub);
   background: var(--mochi-white);
   border: 1.5px solid #E6DCC3;
-  padding: 4px 12px;
+  padding: 4px 10px;
   border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .month-nav-container {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .month-nav-left {
+    justify-content: space-between;
+  }
+  .quick-stats-badge {
+    text-align: center;
+    font-size: 0.74rem;
+  }
 }
 
 /* 6.3 カード (もち白 + 角丸28px + 墨枠線 + 焼き色のにじみ) */
@@ -612,6 +644,7 @@ body {
   padding: 4px;
   gap: 4px;
   margin-bottom: 16px;
+  overflow: hidden;
 }
 
 .mochi-tab {
@@ -619,9 +652,9 @@ body {
   background: transparent;
   border: none;
   border-radius: var(--radius-full);
-  padding: 8px 10px;
+  padding: 8px 6px;
   font-family: var(--font-base);
-  font-size: 0.88rem;
+  font-size: 0.84rem;
   font-weight: 800;
   color: var(--mochi-ink-sub);
   cursor: pointer;
@@ -629,7 +662,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
+  white-space: nowrap;
 }
 
 .mochi-tab.active {
@@ -640,11 +674,28 @@ body {
 }
 
 .mochi-tab .badge {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   background: var(--mochi-cheek);
-  padding: 1px 6px;
+  padding: 1px 5px;
   border-radius: var(--radius-full);
   border: 1px solid var(--mochi-ink);
+  line-height: 1.2;
+}
+
+@media (max-width: 480px) {
+  .mochi-tabs {
+    padding: 3px;
+    gap: 2px;
+  }
+  .mochi-tab {
+    padding: 6px 2px;
+    font-size: 0.74rem;
+    gap: 2px;
+  }
+  .mochi-tab .badge {
+    font-size: 0.62rem;
+    padding: 0 4px;
+  }
 }
 
 /* 固定費バナー */
@@ -1093,4 +1144,201 @@ body {
 
 .mochi-float {
   animation: mochiBounce 3s ease-in-out infinite;
+}
+
+/* ========================================================
+   SP (スマートフォン) レスポンシブ最適化
+   文字の見切れ防止、フォントサイズ・余白・タブ調整
+   ======================================================== */
+@media (max-width: 480px) {
+  #app {
+    padding: 0 12px 90px;
+  }
+
+  .app-header {
+    margin: 0 -12px 10px;
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .brand-title {
+    font-size: 1.15rem;
+  }
+
+  .brand-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .sync-badge {
+    padding: 4px 8px;
+    font-size: 0.72rem;
+  }
+
+  .icon-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  /* ヒーロー精算カード */
+  .settlement-hero {
+    padding: 18px 12px 16px;
+  }
+
+  .hero-character-wrapper .mochi-dog-svg {
+    max-height: 110px;
+    width: auto;
+  }
+
+  .caption-band {
+    font-size: 13px;
+    padding: 4px 12px;
+  }
+
+  .settlement-title {
+    font-size: 1.7rem;
+  }
+
+  .settlement-title.even {
+    font-size: 1.35rem;
+  }
+
+  .settlement-title .yen-mark {
+    font-size: 1.2rem;
+  }
+
+  .settlement-subtitle {
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+
+  /* シーソー */
+  .seesaw-container {
+    padding: 12px 8px 10px;
+    margin: 8px 0 14px;
+  }
+
+  .partner-pill {
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    max-width: 45%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* 精算アクションボタン */
+  .settlement-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .settlement-actions button {
+    width: 100%;
+    font-size: 0.88rem;
+    padding: 10px 14px;
+  }
+
+  /* 3連統計サマリー */
+  .stats-row {
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+
+  .stat-box {
+    padding: 8px 4px;
+    border-radius: var(--radius-s);
+  }
+
+  .stat-box-title {
+    font-size: 0.68rem;
+    white-space: nowrap;
+  }
+
+  .stat-box-num {
+    font-size: 0.88rem;
+    letter-spacing: -0.03em;
+    white-space: nowrap;
+  }
+
+  /* 固定費バナー */
+  .fixed-cost-intro-banner {
+    padding: 12px 12px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .fixed-cost-intro-banner button {
+    width: 100%;
+    text-align: center;
+  }
+
+  /* リストカード */
+  .expense-card-item {
+    padding: 10px 12px;
+  }
+
+  .item-cat-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 1.1rem;
+  }
+
+  .item-title {
+    font-size: 0.88rem;
+  }
+
+  .item-sub-line {
+    font-size: 0.72rem;
+  }
+
+  .item-amount-val {
+    font-size: 1.02rem;
+  }
+
+  /* モーダル */
+  .modal-dialog {
+    max-height: 92vh;
+  }
+
+  .modal-header {
+    padding: 14px 16px;
+  }
+
+  .modal-title {
+    font-size: 1.05rem;
+  }
+
+  .modal-body {
+    padding: 16px;
+    gap: 14px;
+  }
+
+  .modal-footer {
+    padding: 12px 16px;
+  }
+
+  .form-input, .form-select {
+    padding: 10px 12px;
+    font-size: 0.9rem;
+  }
+
+  .category-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+
+  .category-option-btn {
+    padding: 6px 2px;
+    font-size: 0.7rem;
+  }
+
+  /* FAB */
+  .mochi-fab {
+    bottom: 18px;
+    right: 16px;
+    padding: 12px 18px;
+    font-size: 0.92rem;
+  }
 }
