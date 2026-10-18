@@ -83,6 +83,30 @@ ${calc.status === 'even' ? '🎉 ピッタリ（イーブン）です' : `👉 $
   }
 
   /**
+   * 固定費登録時の自動通知
+   */
+  async notifyFixedCostAdded(fixedCost, calc, settings) {
+    const { autoNotify } = this.getConfig();
+    if (!this.isConfigured() || !autoNotify) return;
+
+    const payer = fixedCost.paidBy === 'A' ? settings.partnerAName : settings.partnerBName;
+    const [y, m] = (fixedCost.startMonth || '2026-01').split('-');
+    const startMonthStr = `${y}年${parseInt(m, 10)}月`;
+
+    const text = `🔄 もちもち生活費に【固定費】が登録されました
+
+【項目】${fixedCost.title}
+【月額】¥${Number(fixedCost.amount).toLocaleString()}
+【担当】${payer} (口座/カード)
+【開始月】${startMonthStr}以降 毎月自動
+
+現在の精算目安：
+${calc.status === 'even' ? '🎉 ピッタリ（イーブン）です' : `👉 ${calc.payerName} → ${calc.receiverName} へ ¥${calc.transferAmount.toLocaleString()}`}`;
+
+    await this.sendMessage(text);
+  }
+
+  /**
    * 精算リマインドメッセージ
    */
   async sendSettlementReminder(calc, settings, monthLabel) {

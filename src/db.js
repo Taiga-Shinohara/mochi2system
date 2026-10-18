@@ -56,13 +56,19 @@ create table if not exists public.pairpay_settings (
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-alter table public.pairpay_expenses enable row level security;
-alter table public.pairpay_fixed_costs enable row level security;
-alter table public.pairpay_settings enable row level security;
+-- ふたりで共有利用するためRLSを無効化（すべてのSELECT/INSERT/UPDATE/DELETEを確実に許可）
+alter table public.pairpay_expenses disable row level security;
+alter table public.pairpay_fixed_costs disable row level security;
+alter table public.pairpay_settings disable row level security;
 
-create policy "Allow all access to expenses" on public.pairpay_expenses for all using (true) with check (true);
-create policy "Allow all access to fixed_costs" on public.pairpay_fixed_costs for all using (true) with check (true);
-create policy "Allow all access to settings" on public.pairpay_settings for all using (true) with check (true);
+-- 念のためポリシーを全許可で設定
+drop policy if exists "Allow all access to expenses" on public.pairpay_expenses;
+drop policy if exists "Allow all access to fixed_costs" on public.pairpay_fixed_costs;
+drop policy if exists "Allow all access to settings" on public.pairpay_settings;
+
+create policy "Allow all access to expenses" on public.pairpay_expenses for all using (true);
+create policy "Allow all access to fixed_costs" on public.pairpay_fixed_costs for all using (true);
+create policy "Allow all access to settings" on public.pairpay_settings for all using (true);
 
 alter publication supabase_realtime add table public.pairpay_expenses;
 alter publication supabase_realtime add table public.pairpay_fixed_costs;
@@ -73,7 +79,9 @@ const LOCAL_STORAGE_KEYS = {
   EXPENSES: 'pairpay_expenses_v1',
   FIXED_COSTS: 'pairpay_fixed_costs_v1',
   SETTINGS: 'pairpay_settings_v1',
-  SUPABASE_CONFIG: 'pairpay_supabase_cfg_v1'
+  SUPABASE_CONFIG: 'pairpay_supabase_cfg_v1',
+  DELETED_EXPENSES: 'pairpay_deleted_exp_ids_v1',
+  DELETED_FIXED: 'pairpay_deleted_fc_ids_v1'
 };
 
 export class StorageService {
@@ -85,6 +93,32 @@ export class StorageService {
 
     this.settings = this.loadSettings();
     this.initPromise = this.initSupabaseIfConfigured();
+  }
+
+  getDeletedIds(type) {
+    const key = type === 'expenses' ? LOCAL_STORAGE_KEYS.DELETED_EXPENSES : LOCAL_STORAGE_KEYS.DELETED_FIXED;
+    try {
+      const data = localStorage.getItem(key);
+      return data ? new Set(JSON.parse(data)) : new Set();
+    } catch {
+      return new Set();
+    }
+  }
+
+  addDeletedId(type, id) {
+    const key = type === 'expenses' ? LOCAL_STORAGE_KEYS.DELETED_EXPENSES : LOCAL_STORAGE_KEYS.DELETED_FIXED;
+    const ids = this.getDeletedIds(type);
+    ids.add(String(id));
+    localStorage.setItem(key, JSON.stringify([...ids]));
+  }
+
+  removeDeletedId(type, id) {
+    const key = type === 'expenses' ? LOCAL_STORAGE_KEYS.DELETED_EXPENSES : LOCAL_STORAGE_KEYS.DELETED_FIXED;
+    const ids = this.getDeletedIds(type);
+    if (ids.has(String(id))) {
+      ids.delete(String(id));
+      localStorage.setItem(key, JSON.stringify([...ids]));
+    }
   }
 
   setSyncCallback(cb) {
@@ -257,17 +291,25 @@ export class StorageService {
         .select('*')
         .order('date', { ascending: false });
 
+      const deletedExpIds = this.getDeletedIds('expenses');
+      const validRemoteExpenses = (remoteExpenses || []).filter(d => !deletedExpIds.has(String(d.id)));
+
+      // Supabase上に削除済みIDが残っていればバックグラウンドで再削除
+      const ghostExpenses = (remoteExpenses || []).filter(d => deletedExpIds.has(String(d.id)));
+      for (const g of ghostExpenses) {
+        this.supabase.from('pairpay_expenses').delete().eq('id', g.id).catch(() => {});
+      }
+
       let localExpenses = [];
       try {
         const local = localStorage.getItem(LOCAL_STORAGE_KEYS.EXPENSES);
-        localExpenses = local ? JSON.parse(local) : [];
+        localExpenses = (local ? JSON.parse(local) : []).filter(e => !deletedExpIds.has(String(e.id)));
       } catch {
         localExpenses = [];
       }
 
-      if (remoteExpenses && remoteExpenses.length > 0) {
-        // クラウドにデータがある場合、クラウドを正とする
-        const mapped = remoteExpenses.map(d => ({
+      if (validRemoteExpenses.length > 0) {
+        const mapped = validRemoteExpenses.map(d => ({
           id: d.id,
           title: d.title,
           amount: Number(d.amount),
@@ -279,8 +321,8 @@ export class StorageService {
           memo: d.memo
         }));
         localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify(mapped));
-      } else if (localExpenses.length > 0) {
-        // クラウドが空で、ローカルにデータがあれば、クラウドにアップロード移行
+      } else if (localExpenses.length > 0 && (!remoteExpenses || remoteExpenses.length === 0)) {
+        // クラウドが完全に空で、かつローカルに未登録データがある初回のみアップロード
         for (const exp of localExpenses) {
           await this.supabase.from('pairpay_expenses').upsert({
             id: exp.id,
@@ -294,6 +336,8 @@ export class StorageService {
             memo: exp.memo || ''
           });
         }
+      } else {
+        localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify([]));
       }
 
       // 3. 固定費 (Fixed Costs) の同期
@@ -301,16 +345,24 @@ export class StorageService {
         .from('pairpay_fixed_costs')
         .select('*');
 
+      const deletedFixedIds = this.getDeletedIds('fixed');
+      const validRemoteFixed = (remoteFixed || []).filter(d => !deletedFixedIds.has(String(d.id)));
+
+      const ghostFixed = (remoteFixed || []).filter(d => deletedFixedIds.has(String(d.id)));
+      for (const gf of ghostFixed) {
+        this.supabase.from('pairpay_fixed_costs').delete().eq('id', gf.id).catch(() => {});
+      }
+
       let localFixed = [];
       try {
         const local = localStorage.getItem(LOCAL_STORAGE_KEYS.FIXED_COSTS);
-        localFixed = local ? JSON.parse(local) : [];
+        localFixed = (local ? JSON.parse(local) : []).filter(f => !deletedFixedIds.has(String(f.id)));
       } catch {
         localFixed = [];
       }
 
-      if (remoteFixed && remoteFixed.length > 0) {
-        const mapped = remoteFixed.map(d => ({
+      if (validRemoteFixed.length > 0) {
+        const mapped = validRemoteFixed.map(d => ({
           id: d.id,
           title: d.title,
           amount: Number(d.amount),
@@ -323,7 +375,7 @@ export class StorageService {
           active: d.active
         }));
         localStorage.setItem(LOCAL_STORAGE_KEYS.FIXED_COSTS, JSON.stringify(mapped));
-      } else if (localFixed.length > 0) {
+      } else if (localFixed.length > 0 && (!remoteFixed || remoteFixed.length === 0)) {
         for (const fc of localFixed) {
           await this.supabase.from('pairpay_fixed_costs').upsert({
             id: fc.id,
@@ -338,6 +390,8 @@ export class StorageService {
             active: fc.active !== false
           });
         }
+      } else {
+        localStorage.setItem(LOCAL_STORAGE_KEYS.FIXED_COSTS, JSON.stringify([]));
       }
     } catch (syncErr) {
       console.warn('Initial sync warning:', syncErr);
@@ -371,6 +425,7 @@ export class StorageService {
     if (this.initPromise) {
       await this.initPromise;
     }
+    const deletedExpIds = this.getDeletedIds('expenses');
     if (this.isConnected && this.supabase) {
       try {
         const { data, error } = await this.supabase
@@ -378,7 +433,8 @@ export class StorageService {
           .select('*')
           .order('date', { ascending: false });
         if (!error && data) {
-          const mapped = data.map(d => ({
+          const valid = data.filter(d => !deletedExpIds.has(String(d.id)));
+          const mapped = valid.map(d => ({
             id: d.id,
             title: d.title,
             amount: Number(d.amount),
@@ -398,15 +454,17 @@ export class StorageService {
     }
     try {
       const local = localStorage.getItem(LOCAL_STORAGE_KEYS.EXPENSES);
-      return local ? JSON.parse(local) : [];
+      const arr = local ? JSON.parse(local) : [];
+      return arr.filter(e => !deletedExpIds.has(String(e.id)));
     } catch {
       return [];
     }
   }
 
   async saveExpense(expense) {
+    this.removeDeletedId('expenses', expense.id);
     const current = await this.getExpenses();
-    const idx = current.findIndex(e => e.id === expense.id);
+    const idx = current.findIndex(e => String(e.id) === String(expense.id));
     let updated;
     if (idx >= 0) {
       updated = [...current];
@@ -437,15 +495,21 @@ export class StorageService {
   }
 
   async deleteExpense(id) {
+    const strId = String(id);
+    this.addDeletedId('expenses', strId);
+
     const current = await this.getExpenses();
-    const updated = current.filter(e => e.id !== id);
+    const updated = current.filter(e => String(e.id) !== strId);
     localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify(updated));
 
     if (this.isConnected && this.supabase) {
       try {
-        await this.supabase.from('pairpay_expenses').delete().eq('id', id);
+        const { error } = await this.supabase.from('pairpay_expenses').delete().eq('id', strId);
+        if (error) {
+          console.error('Supabase deleteExpense error:', error);
+        }
       } catch (e) {
-        console.error('Supabase deleteExpense error', e);
+        console.error('Supabase deleteExpense exception:', e);
       }
     }
     return updated;
@@ -456,11 +520,13 @@ export class StorageService {
     if (this.initPromise) {
       await this.initPromise;
     }
+    const deletedFixedIds = this.getDeletedIds('fixed');
     if (this.isConnected && this.supabase) {
       try {
         const { data, error } = await this.supabase.from('pairpay_fixed_costs').select('*');
         if (!error && data) {
-          const mapped = data.map(d => ({
+          const valid = data.filter(d => !deletedFixedIds.has(String(d.id)));
+          const mapped = valid.map(d => ({
             id: d.id,
             title: d.title,
             amount: Number(d.amount),
@@ -481,15 +547,17 @@ export class StorageService {
     }
     try {
       const local = localStorage.getItem(LOCAL_STORAGE_KEYS.FIXED_COSTS);
-      return local ? JSON.parse(local) : [];
+      const arr = local ? JSON.parse(local) : [];
+      return arr.filter(f => !deletedFixedIds.has(String(f.id)));
     } catch {
       return [];
     }
   }
 
   async saveFixedCost(cost) {
+    this.removeDeletedId('fixed', cost.id);
     const current = await this.getFixedCosts();
-    const idx = current.findIndex(c => c.id === cost.id);
+    const idx = current.findIndex(c => String(c.id) === String(cost.id));
     let updated;
     if (idx >= 0) {
       updated = [...current];
@@ -522,29 +590,32 @@ export class StorageService {
 
   /**
    * 固定費の削除
-   * 【フィードバック反映】
    * 登録月より後の月で削除された場合は、その月以降のみ除外されるよう endMonth を設定。
    * 登録月に削除された場合はレコード自体を削除。
    */
   async deleteFixedCost(id, fromMonth = null) {
+    const strId = String(id);
     const current = await this.getFixedCosts();
-    const target = current.find(c => c.id === id);
+    const target = current.find(c => String(c.id) === strId);
 
-    let updated;
     if (target && fromMonth && target.startMonth && target.startMonth < fromMonth) {
       // 過去の月には残し、当月(fromMonth)以降のみ終了扱いにする
       target.endMonth = fromMonth;
       return await this.saveFixedCost(target);
     } else {
       // 登録月に削除、または完全削除
-      updated = current.filter(c => c.id !== id);
+      this.addDeletedId('fixed', strId);
+      const updated = current.filter(c => String(c.id) !== strId);
       localStorage.setItem(LOCAL_STORAGE_KEYS.FIXED_COSTS, JSON.stringify(updated));
 
       if (this.isConnected && this.supabase) {
         try {
-          await this.supabase.from('pairpay_fixed_costs').delete().eq('id', id);
+          const { error } = await this.supabase.from('pairpay_fixed_costs').delete().eq('id', strId);
+          if (error) {
+            console.error('Supabase deleteFixedCost error:', error);
+          }
         } catch (e) {
-          console.error('Supabase deleteFixedCost error', e);
+          console.error('Supabase deleteFixedCost exception:', e);
         }
       }
       return updated;

@@ -33,6 +33,7 @@ class MochiBudgetApp {
 
     this.isSelectMode = false;
     this.selectedIds = new Set();
+    this.seesawScope = 'variable'; // デフォルトは「変動費のみ」
 
     this.lineService = new LineService(() => this.settings);
 
@@ -143,12 +144,22 @@ class MochiBudgetApp {
     const appEl = document.getElementById('app');
     if (!appEl) return;
 
-    const calc = calculateSettlement({
+    const calcAll = calculateSettlement({
       expenses: this.expenses,
       fixedCosts: this.fixedCosts,
       settings: this.settings,
       currentMonth: this.currentMonth
     });
+
+    const calcVariable = calculateSettlement({
+      expenses: this.expenses,
+      fixedCosts: [],
+      settings: this.settings,
+      currentMonth: this.currentMonth
+    });
+
+    const calc = calcAll;
+    const activeCalc = this.seesawScope === 'all' ? calcAll : calcVariable;
 
     const isConnected = this.storage.isConnected;
     const { partnerAName, partnerBName, defaultRatioA, defaultRatioB } = this.settings;
@@ -166,27 +177,27 @@ class MochiBudgetApp {
       displayedItems = displayedItems.filter(i => i.category === this.selectedCategoryFilter);
     }
 
-    // 犬のポーズ決定
+    // 犬のポーズ決定（選択中の集計対象に基づく）
     let dogPose = 'calm';
     let captionText = 'わかっていますよ';
 
-    // 遊具風シーソーの傾き角度計算（立替金額が大きい側が重みで沈み込む）
+    // 遊具風シーソーの傾き角度計算（選択中の集計で立替金額が大きい側が重みで沈み込む）
     let tiltDeg = 0;
-    if (calc.status !== 'even' && calc.transferAmount > 0) {
+    if (activeCalc.status !== 'even' && activeCalc.transferAmount > 0) {
       const maxTilt = 9; // 最大9度の自然で愛らしい傾斜
-      const severity = Math.min(1, calc.transferAmount / 25000);
+      const severity = Math.min(1, activeCalc.transferAmount / 25000);
       const angle = Math.max(3, Math.round(severity * maxTilt));
       // balanceA > 0 のとき A が立替中（左が沈む = -angle）
-      tiltDeg = calc.balanceA > 0 ? -angle : angle;
+      tiltDeg = activeCalc.balanceA > 0 ? -angle : angle;
     }
 
-    if (calc.status === 'even') {
+    if (activeCalc.status === 'even') {
       dogPose = 'smile';
       captionText = 'でも幸せならOKです';
-    } else if (calc.transferAmount > 40000) {
+    } else if (activeCalc.transferAmount > 40000) {
       dogPose = 'panic';
       captionText = 'あと30分…あと30分…';
-    } else if (calc.transferAmount > 20000) {
+    } else if (activeCalc.transferAmount > 20000) {
       dogPose = 'sad';
       captionText = '世知辛い';
     } else {
@@ -222,7 +233,6 @@ class MochiBudgetApp {
             <span class="current-month-label">${this.formatMonthDisplay(this.currentMonth)}</span>
             <button class="month-btn" id="btnNextMonth">▶</button>
           </div>
-          <!-- 【フィードバック1】当月じゃない時のみ表示される「現在の月に戻る」ボタン -->
           ${isViewingOtherMonth ? `
             <button class="btn-secondary btn-return-month" id="btnReturnToCurrentMonth">
               今月に戻る 📅
@@ -243,28 +253,43 @@ class MochiBudgetApp {
           </div>
 
           <div class="settlement-amount-box">
-            ${calc.status === 'even' ? `
+            <div style="font-size: 0.78rem; font-weight: 800; color: var(--mochi-ink-sub); margin-bottom: 2px;">
+              ${this.seesawScope === 'variable' ? '⚡ 変動費（日常のお買い物・外食）の精算' : '🏠＋⚡ 全体の精算（固定費＋変動費）'}
+            </div>
+            ${activeCalc.status === 'even' ? `
               <div class="settlement-subtitle">今月の精算はぴったりです</div>
               <div class="settlement-title even">
                 <span>イーブンですよ</span>
               </div>
             ` : `
               <div class="settlement-subtitle">
-                <strong>${calc.payerName}</strong> から <strong>${calc.receiverName}</strong> へのお支払い
+                <strong>${activeCalc.payerName}</strong> から <strong>${activeCalc.receiverName}</strong> へのお支払い
               </div>
               <div class="settlement-title">
                 <span class="yen-mark">¥</span>
-                <span>${calc.transferAmount.toLocaleString()}</span>
+                <span>${activeCalc.transferAmount.toLocaleString()}</span>
               </div>
             `}
           </div>
 
           <!-- 遊具風精算シーソー（両脇に犬・立替が多い人が沈み込む） -->
           <div class="seesaw-container">
+            <!-- シーソー集計範囲切替（変動費のみ vs すべて含む） -->
+            <div class="seesaw-scope-bar">
+              <div class="seesaw-scope-toggle">
+                <button type="button" class="seesaw-scope-btn ${this.seesawScope === 'variable' ? 'active' : ''}" data-scope="variable">
+                  <span>⚡ 変動費のみ (日常の立替)</span>
+                </button>
+                <button type="button" class="seesaw-scope-btn ${this.seesawScope === 'all' ? 'active' : ''}" data-scope="all">
+                  <span>🏠＋⚡ すべて (固定費含む)</span>
+                </button>
+              </div>
+            </div>
+
             <div class="seesaw-partners-row">
               <span class="partner-pill a">🐾 ${partnerAName}</span>
-              <span class="seesaw-status-tag ${calc.status === 'even' ? 'even' : (calc.balanceA > 0 ? 'a-heavy' : 'b-heavy')}">
-                ${calc.status === 'even' ? '⚖️ つり合っています' : (calc.balanceA > 0 ? `🐾 ${partnerAName} が立替中` : `🐾 ${partnerBName} が立替中`)}
+              <span class="seesaw-status-tag ${activeCalc.status === 'even' ? 'even' : (activeCalc.balanceA > 0 ? 'a-heavy' : 'b-heavy')}">
+                ${activeCalc.status === 'even' ? '⚖️ つり合っています' : (activeCalc.balanceA > 0 ? `🐾 ${partnerAName} が立替中` : `🐾 ${partnerBName} が立替中`)}
               </span>
               <span class="partner-pill b">🐾 ${partnerBName}</span>
             </div>
@@ -275,9 +300,9 @@ class MochiBudgetApp {
                 <!-- A側の席 & 犬アイコン -->
                 <div class="seesaw-seat seat-a">
                   <div class="seesaw-dog-rider">
-                    <img src="/characters/mochi-smile.png" alt="${partnerAName}" class="dog-rider-img ${calc.balanceA > 0 ? 'heavy-sink' : ''}" />
-                    <span class="seat-badge ${calc.balanceA >= 0 ? 'plus' : 'minus'}">
-                      ${calc.balanceA >= 0 ? `+¥${calc.balanceA.toLocaleString()}` : `-¥${Math.abs(calc.balanceA).toLocaleString()}`}
+                    <img src="/characters/mochi-smile.png" alt="${partnerAName}" class="dog-rider-img ${activeCalc.balanceA > 0 ? 'heavy-sink' : ''}" />
+                    <span class="seat-badge ${activeCalc.balanceA >= 0 ? 'plus' : 'minus'}">
+                      ${activeCalc.balanceA >= 0 ? `+¥${activeCalc.balanceA.toLocaleString()}` : `-¥${Math.abs(activeCalc.balanceA).toLocaleString()}`}
                     </span>
                   </div>
                   <div class="seat-handle"></div>
@@ -291,9 +316,9 @@ class MochiBudgetApp {
                 <!-- B側の席 & 犬アイコン -->
                 <div class="seesaw-seat seat-b">
                   <div class="seesaw-dog-rider">
-                    <img src="/characters/mochi-stretch.png" alt="${partnerBName}" class="dog-rider-img ${calc.balanceB > 0 ? 'heavy-sink' : ''}" />
-                    <span class="seat-badge ${calc.balanceB >= 0 ? 'plus' : 'minus'}">
-                      ${calc.balanceB >= 0 ? `+¥${calc.balanceB.toLocaleString()}` : `-¥${Math.abs(calc.balanceB).toLocaleString()}`}
+                    <img src="/characters/mochi-stretch.png" alt="${partnerBName}" class="dog-rider-img ${activeCalc.balanceB > 0 ? 'heavy-sink' : ''}" />
+                    <span class="seat-badge ${activeCalc.balanceB >= 0 ? 'plus' : 'minus'}">
+                      ${activeCalc.balanceB >= 0 ? `+¥${activeCalc.balanceB.toLocaleString()}` : `-¥${Math.abs(activeCalc.balanceB).toLocaleString()}`}
                     </span>
                   </div>
                   <div class="seat-handle"></div>
@@ -308,9 +333,9 @@ class MochiBudgetApp {
             </div>
 
             <div class="seesaw-labels">
-              <span>${calc.balanceA > 0 ? '⬇️ 立替が多くて沈み中' : (calc.balanceA < 0 ? '⬆️ 浮き中' : '均等')}</span>
-              <span style="font-weight: 800; color: var(--mochi-ink);">${calc.status === 'even' ? 'イーブン（0円）' : `差額: ¥${calc.transferAmount.toLocaleString()}`}</span>
-              <span>${calc.balanceB > 0 ? '⬇️ 立替が多くて沈み中' : (calc.balanceB < 0 ? '⬆️ 浮き中' : '均等')}</span>
+              <span>${activeCalc.balanceA > 0 ? '⬇️ 立替が多くて沈み中' : (activeCalc.balanceA < 0 ? '⬆️ 浮き中' : '均等')}</span>
+              <span style="font-weight: 800; color: var(--mochi-ink);">${activeCalc.status === 'even' ? 'イーブン（0円）' : `差額: ¥${activeCalc.transferAmount.toLocaleString()}`}</span>
+              <span>${activeCalc.balanceB > 0 ? '⬇️ 立替が多くて沈み中' : (activeCalc.balanceB < 0 ? '⬆️ 浮き中' : '均等')}</span>
             </div>
           </div>
 
@@ -321,10 +346,10 @@ class MochiBudgetApp {
                 <span class="person-name">${partnerAName}</span>
                 <span class="person-ratio-tag">${defaultRatioA}%</span>
               </div>
-              <div class="person-paid-val">¥${calc.totalPaidA.toLocaleString()}</div>
-              <div class="person-goal-val">目安: ¥${calc.totalOwedA.toLocaleString()}</div>
-              <div class="person-diff-val ${calc.balanceA >= 0 ? 'plus' : 'minus'}">
-                ${calc.balanceA >= 0 ? `+¥${calc.balanceA.toLocaleString()} (立替)` : `-¥${Math.abs(calc.balanceA).toLocaleString()} (不足)`}
+              <div class="person-paid-val">¥${activeCalc.totalPaidA.toLocaleString()}</div>
+              <div class="person-goal-val">目安: ¥${activeCalc.totalOwedA.toLocaleString()}</div>
+              <div class="person-diff-val ${activeCalc.balanceA >= 0 ? 'plus' : 'minus'}">
+                ${activeCalc.balanceA >= 0 ? `+¥${activeCalc.balanceA.toLocaleString()} (立替)` : `-¥${Math.abs(activeCalc.balanceA).toLocaleString()} (不足)`}
               </div>
             </div>
 
@@ -333,10 +358,10 @@ class MochiBudgetApp {
                 <span class="person-name">${partnerBName}</span>
                 <span class="person-ratio-tag">${defaultRatioB}%</span>
               </div>
-              <div class="person-paid-val">¥${calc.totalPaidB.toLocaleString()}</div>
-              <div class="person-goal-val">目安: ¥${calc.totalOwedB.toLocaleString()}</div>
-              <div class="person-diff-val ${calc.balanceB >= 0 ? 'plus' : 'minus'}">
-                ${calc.balanceB >= 0 ? `+¥${calc.balanceB.toLocaleString()} (立替)` : `-¥${Math.abs(calc.balanceB).toLocaleString()} (不足)`}
+              <div class="person-paid-val">¥${activeCalc.totalPaidB.toLocaleString()}</div>
+              <div class="person-goal-val">目安: ¥${activeCalc.totalOwedB.toLocaleString()}</div>
+              <div class="person-diff-val ${activeCalc.balanceB >= 0 ? 'plus' : 'minus'}">
+                ${activeCalc.balanceB >= 0 ? `+¥${activeCalc.balanceB.toLocaleString()} (立替)` : `-¥${Math.abs(activeCalc.balanceB).toLocaleString()} (不足)`}
               </div>
             </div>
           </div>
@@ -563,6 +588,15 @@ class MochiBudgetApp {
     appEl.querySelectorAll('.mochi-chip').forEach(chip => {
       chip.addEventListener('click', (e) => {
         this.selectedCategoryFilter = e.currentTarget.dataset.cat;
+        this.render();
+        this.attachEventListeners();
+      });
+    });
+
+    // シーソー集計範囲切替（変動費のみ vs すべて含む）
+    appEl.querySelectorAll('.seesaw-scope-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        this.seesawScope = e.currentTarget.dataset.scope;
         this.render();
         this.attachEventListeners();
       });
@@ -962,6 +996,16 @@ class MochiBudgetApp {
 
         await this.storage.saveFixedCost(newFixed);
         await this.loadData();
+
+        // 固定費登録LINE通知
+        const currentCalc = calculateSettlement({
+          expenses: this.expenses,
+          fixedCosts: this.fixedCosts,
+          settings: this.settings,
+          currentMonth: this.currentMonth
+        });
+        this.lineService.notifyFixedCostAdded(newFixed, currentCalc, this.settings);
+
         close();
         this.render();
         this.attachEventListeners();
@@ -1154,6 +1198,16 @@ class MochiBudgetApp {
 
       await this.storage.saveFixedCost(newFixed);
       await this.loadData();
+
+      // 固定費登録LINE通知
+      const currentCalc = calculateSettlement({
+        expenses: this.expenses,
+        fixedCosts: this.fixedCosts,
+        settings: this.settings,
+        currentMonth: this.currentMonth
+      });
+      this.lineService.notifyFixedCostAdded(newFixed, currentCalc, this.settings);
+
       close();
       this.render();
       this.attachEventListeners();
