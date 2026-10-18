@@ -140,7 +140,8 @@ export class StorageService {
       lineToken: '',
       lineTo: '',
       reminderDay: 25,
-      lineAutoNotify: true
+      lineAutoNotify: true,
+      appUrl: ''
     };
   }
 
@@ -148,7 +149,7 @@ export class StorageService {
     this.settings = { ...this.settings, ...newSettings };
     localStorage.setItem(LOCAL_STORAGE_KEYS.SETTINGS, JSON.stringify(this.settings));
     if (this.supabase && this.isConnected) {
-      this.supabase.from('pairpay_settings').upsert({
+      const payload = {
         id: 'global_settings',
         partner_a_name: this.settings.partnerAName,
         partner_b_name: this.settings.partnerBName,
@@ -158,7 +159,13 @@ export class StorageService {
         line_to: this.settings.lineTo || '',
         reminder_day: this.settings.reminderDay || 25,
         line_auto_notify: this.settings.lineAutoNotify !== false,
+        app_url: this.settings.appUrl || '',
         updated_at: new Date().toISOString()
+      };
+      this.supabase.from('pairpay_settings').upsert(payload).catch(() => {
+        // もしapp_urlカラムがなくてもエラーで止まらないようフォールバック
+        delete payload.app_url;
+        return this.supabase.from('pairpay_settings').upsert(payload);
       }).then();
     }
   }
@@ -266,7 +273,8 @@ export class StorageService {
           lineToken: remoteSettings.line_token || this.settings.lineToken,
           lineTo: remoteSettings.line_to || this.settings.lineTo,
           reminderDay: Number(remoteSettings.reminder_day) || this.settings.reminderDay,
-          lineAutoNotify: remoteSettings.line_auto_notify !== false
+          lineAutoNotify: remoteSettings.line_auto_notify !== false,
+          appUrl: remoteSettings.app_url || this.settings.appUrl || ''
         };
         localStorage.setItem(LOCAL_STORAGE_KEYS.SETTINGS, JSON.stringify(this.settings));
       } else {
@@ -281,8 +289,9 @@ export class StorageService {
           line_to: this.settings.lineTo || '',
           reminder_day: this.settings.reminderDay || 25,
           line_auto_notify: this.settings.lineAutoNotify !== false,
+          app_url: this.settings.appUrl || '',
           updated_at: new Date().toISOString()
-        });
+        }).catch(() => {});
       }
 
       // 2. 支出 (Expenses) の同期

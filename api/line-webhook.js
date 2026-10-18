@@ -68,7 +68,7 @@ export default async function handler(req, res) {
               messages: [
                 {
                   type: 'text',
-                  text: `🐾 もちもち犬です！\n\nこのトークルームの送信先IDは以下です：\n${targetId}\n\nアプリの「設定 ＞ 送信先ID」に貼り付けて保存してくださいね！`
+                  text: `🐾 もちもち犬です！\n\nこのトークルームの送信先IDは以下です：\n${targetId}\n\nアプリの「設定 ＞ 送信先ID」に貼り付けて保存してくださいね！\n\n👇 もちもち生活費を開く：\n${process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://mochi2system.vercel.app')}`
                 }
               ]
             })

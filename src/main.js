@@ -1217,7 +1217,7 @@ class MochiBudgetApp {
 
   // 設定モーダル（2人の名前・比率・LINE通知設定・リマインド日）
   openSettingsModal() {
-    const { partnerAName, partnerBName, defaultRatioA, lineToken, lineTo, reminderDay, lineAutoNotify } = this.settings;
+    const { partnerAName, partnerBName, defaultRatioA, lineToken, lineTo, reminderDay, lineAutoNotify, appUrl } = this.settings;
     const modalContainer = document.getElementById('modalContainer');
 
     modalContainer.innerHTML = `
@@ -1282,6 +1282,14 @@ class MochiBudgetApp {
                 <input type="text" id="settingLineTo" class="form-input" placeholder="C123456... または U123456..." value="${lineTo || ''}" />
                 <div style="font-size: 0.72rem; color: var(--mochi-ink-sub); line-height: 1.4; margin-top: 2px;">
                   💡 LINE DevelopersのWebhookに <code>${window.location.origin}/api/line-webhook</code> を設定し、グループでBotを招待または「ID」と発言すると自動検知できます。
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" style="font-size: 0.78rem;">アプリのアクセスURL（通知末尾に自動追記）</label>
+                <input type="url" id="settingAppUrl" class="form-input" placeholder="${window.location.origin}" value="${appUrl || ''}" />
+                <div style="font-size: 0.72rem; color: var(--mochi-ink-sub); line-height: 1.4; margin-top: 2px;">
+                  💡 空欄の場合は現在アクセス中のURL（<code>${window.location.origin}</code>）が自動でLINE通知の末尾に記載されます。
                 </div>
               </div>
 
@@ -1357,12 +1365,16 @@ class MochiBudgetApp {
     overlay.querySelector('#btnTestLine').addEventListener('click', async () => {
       const token = overlay.querySelector('#settingLineToken').value.trim();
       const to = overlay.querySelector('#settingLineTo').value.trim();
+      const customAppUrl = overlay.querySelector('#settingAppUrl')?.value.trim();
       if (!token || !to) {
         alert('LINE Tokenと送信先IDを入力してください');
         return;
       }
       this.settings.lineToken = token;
       this.settings.lineTo = to;
+      if (customAppUrl !== undefined) {
+        this.settings.appUrl = customAppUrl;
+      }
       const calc = calculateSettlement({
         expenses: this.expenses,
         fixedCosts: this.fixedCosts,
@@ -1432,6 +1444,7 @@ class MochiBudgetApp {
       const lineToVal = overlay.querySelector('#settingLineTo').value.trim();
       const reminderDayVal = Number(overlay.querySelector('#settingReminderDay').value) || 25;
       const autoNotifyVal = overlay.querySelector('#settingLineAutoNotify').checked;
+      const appUrlVal = overlay.querySelector('#settingAppUrl')?.value.trim() || '';
 
       this.storage.saveSettings({
         partnerAName: nameA,
@@ -1441,7 +1454,8 @@ class MochiBudgetApp {
         lineToken: lineTokenVal,
         lineTo: lineToVal,
         reminderDay: reminderDayVal,
-        lineAutoNotify: autoNotifyVal
+        lineAutoNotify: autoNotifyVal,
+        appUrl: appUrlVal
       });
       this.settings = this.storage.settings;
 
