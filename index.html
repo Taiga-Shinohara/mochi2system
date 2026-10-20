@@ -4,12 +4,67 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#FFFDF7" />
-    <meta name="description" content="もちもち生活費精算 - もちもち犬とふたりの生活費をのんびりスマート管理" />
-    <title>もちもち生活費精算 | もちもち犬とふたりペイ</title>
+    <title>もちもち生活費 | カップル・ふたり暮らしの生活費精算</title>
+    <meta name="description" content="もちもち犬とふたりの生活費をのんびりスマート管理。立替記録、割り勘計算、月別推移グラフ、LINE通知連携。" />
+
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700;900&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+
+    <!-- 1. ブラウザのタブ・ブックマーク用 Favicon -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <!-- 検索結果画面用（Google検索は48pxの倍数アイコンを優先取得・表示します） -->
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
+
+    <!-- 2. スマホ・PCのデスクトップショートカット & PWA用アイコン -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="もちもち生活費" />
+    <meta name="application-name" content="もちもち生活費" />
+    <meta name="msapplication-TileColor" content="#FFFDF7" />
+    <meta name="msapplication-TileImage" content="/icon-192.png" />
+
+    <!-- 3. 検索結果・SNSシェア用 OGP (Open Graph Protocol & Twitter Cards) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="もちもち生活費 | カップル・ふたり暮らしの生活費精算" />
+    <meta property="og:description" content="もちもち犬とふたりの生活費をのんびりスマート管理。立替記録、割り勘計算、月別推移グラフ、LINE通知連携。" />
+    <meta property="og:image" content="/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="もちもち生活費 - ふたり暮らしの家計簿" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="もちもち生活費 | カップル・ふたり暮らしの生活費精算" />
+    <meta name="twitter:description" content="もちもち犬とふたりの生活費をのんびりスマート管理。立替記録、割り勘計算、月別推移グラフ、LINE通知連携。" />
+    <meta name="twitter:image" content="/og-image.png" />
+
+    <!-- 検索エンジン向け構造化データ (Schema.org JSON-LD) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "もちもち生活費",
+      "applicationCategory": "FinanceApplication",
+      "operatingSystem": "All",
+      "description": "カップル・ふたり暮らしのための割り勘・生活費精算アプリ",
+      "image": "/og-image.png",
+      "screenshot": "/og-image.png",
+      "author": {
+        "@type": "Organization",
+        "name": "もちもち生活費",
+        "logo": "/icon-512.png"
+      }
+    }
+    </script>
   </head>
   <body>
     <div id="app"></div>
