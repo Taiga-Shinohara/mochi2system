@@ -174,3 +174,16 @@ export function generateShareText({ calculation, settings, monthLabel }) {
 比率: ${settings.partnerAName} ${settings.defaultRatioA}% : ${settings.partnerBName} ${settings.defaultRatioB}%
 精算よろしくね！わかっていますよ🐾`;
 }
+
+/**
+ * 複数月の推移サマリー計算
+ */
+export function calculateMultiMonthTrends({ expenses, fixedCosts, settings, months }) {
+  return (months || []).map(m => {
+    const calc = calculateSettlement({ expenses, fixedCosts, settings, currentMonth: m });
+    return {
+      month: m,
+      ...calc
+    };
+  });
+}

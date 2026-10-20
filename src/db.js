@@ -53,6 +53,7 @@ create table if not exists public.pairpay_settings (
   line_to text,
   reminder_day numeric default 25,
   line_auto_notify boolean default true,
+  settled_months jsonb default '[]'::jsonb,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -81,7 +82,8 @@ const LOCAL_STORAGE_KEYS = {
   SETTINGS: 'pairpay_settings_v1',
   SUPABASE_CONFIG: 'pairpay_supabase_cfg_v1',
   DELETED_EXPENSES: 'pairpay_deleted_exp_ids_v1',
-  DELETED_FIXED: 'pairpay_deleted_fc_ids_v1'
+  DELETED_FIXED: 'pairpay_deleted_fc_ids_v1',
+  SETTLED_MONTHS: 'pairpay_settled_months_v1'
 };
 
 export class StorageService {
@@ -125,10 +127,49 @@ export class StorageService {
     this.onSyncCallback = cb;
   }
 
+  getSettledMonths() {
+    try {
+      const fromSettings = this.settings?.settledMonths;
+      if (Array.isArray(fromSettings)) return fromSettings;
+      const raw = localStorage.getItem(LOCAL_STORAGE_KEYS.SETTLED_MONTHS);
+      if (raw) return JSON.parse(raw);
+    } catch {
+      // fallback
+    }
+    return [];
+  }
+
+  isMonthSettled(month) {
+    if (!month) return false;
+    const list = this.getSettledMonths();
+    return list.includes(month);
+  }
+
+  async setMonthSettled(month, isSettled = true) {
+    if (!month) return;
+    const current = new Set(this.getSettledMonths());
+    if (isSettled) {
+      current.add(month);
+    } else {
+      current.delete(month);
+    }
+    const updatedList = Array.from(current).sort();
+    this.settings.settledMonths = updatedList;
+    localStorage.setItem(LOCAL_STORAGE_KEYS.SETTLED_MONTHS, JSON.stringify(updatedList));
+    this.saveSettings({ settledMonths: updatedList });
+  }
+
   loadSettings() {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.SETTINGS);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (!parsed.settledMonths) {
+          const rawSettled = localStorage.getItem(LOCAL_STORAGE_KEYS.SETTLED_MONTHS);
+          if (rawSettled) parsed.settledMonths = JSON.parse(rawSettled);
+        }
+        return parsed;
+      }
     } catch (e) {
       console.warn('Failed to parse settings', e);
     }
@@ -141,13 +182,17 @@ export class StorageService {
       lineTo: '',
       reminderDay: 25,
       lineAutoNotify: true,
-      appUrl: ''
+      appUrl: '',
+      settledMonths: []
     };
   }
 
   saveSettings(newSettings) {
     this.settings = { ...this.settings, ...newSettings };
     localStorage.setItem(LOCAL_STORAGE_KEYS.SETTINGS, JSON.stringify(this.settings));
+    if (this.settings.settledMonths) {
+      localStorage.setItem(LOCAL_STORAGE_KEYS.SETTLED_MONTHS, JSON.stringify(this.settings.settledMonths));
+    }
     if (this.supabase && this.isConnected) {
       const payload = {
         id: 'global_settings',
@@ -160,10 +205,12 @@ export class StorageService {
         reminder_day: this.settings.reminderDay || 25,
         line_auto_notify: this.settings.lineAutoNotify !== false,
         app_url: this.settings.appUrl || '',
+        settled_months: this.settings.settledMonths || [],
         updated_at: new Date().toISOString()
       };
       this.supabase.from('pairpay_settings').upsert(payload).catch(() => {
-        // もしapp_urlカラムがなくてもエラーで止まらないようフォールバック
+        // もしsettled_monthsやapp_urlカラムがなくてもエラーで止まらないようフォールバック
+        delete payload.settled_months;
         delete payload.app_url;
         return this.supabase.from('pairpay_settings').upsert(payload);
       }).then();
@@ -274,9 +321,15 @@ export class StorageService {
           lineTo: remoteSettings.line_to || this.settings.lineTo,
           reminderDay: Number(remoteSettings.reminder_day) || this.settings.reminderDay,
           lineAutoNotify: remoteSettings.line_auto_notify !== false,
-          appUrl: remoteSettings.app_url || this.settings.appUrl || ''
+          appUrl: remoteSettings.app_url || this.settings.appUrl || '',
+          settledMonths: Array.isArray(remoteSettings.settled_months)
+            ? remoteSettings.settled_months
+            : (this.settings.settledMonths || this.getSettledMonths() || [])
         };
         localStorage.setItem(LOCAL_STORAGE_KEYS.SETTINGS, JSON.stringify(this.settings));
+        if (this.settings.settledMonths) {
+          localStorage.setItem(LOCAL_STORAGE_KEYS.SETTLED_MONTHS, JSON.stringify(this.settings.settledMonths));
+        }
       } else {
         // クラウド側に設定がなければローカル設定を保存
         await this.supabase.from('pairpay_settings').upsert({

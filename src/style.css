@@ -1493,6 +1493,316 @@ body {
 }
 
 /* ========================================================
+   ビュー切替コントロール（「月の精算」vs「月別推移・一覧」）
+   ======================================================== */
+.view-switch-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 18px;
+}
+
+.view-switch-control {
+  display: inline-flex;
+  background: #E8E2D4;
+  border: none;
+  border-radius: var(--radius-full);
+  padding: 4px;
+  gap: 4px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.view-switch-btn {
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-full);
+  padding: 8px 22px;
+  font-family: var(--font-base);
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--mochi-ink-sub);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.view-switch-btn.active {
+  background: var(--mochi-white);
+  color: var(--mochi-ink);
+  font-weight: 800;
+  box-shadow: var(--shadow-segmented);
+}
+
+/* 精算ロックバナー */
+.settled-lock-banner {
+  width: 100%;
+  background: #EFF6FF;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: var(--radius-s);
+  padding: 8px 14px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: #1E40AF;
+  font-weight: 700;
+}
+
+.btn-settled-locked {
+  background: #F0FDF4 !important;
+  border-color: #86EFAC !important;
+  color: #166534 !important;
+}
+
+/* ========================================================
+   月別推移・一覧ビュー（Trends View）
+   ======================================================== */
+.trends-view-container {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.trends-hero-card {
+  background: var(--mochi-white);
+  border: var(--border-card);
+  border-radius: var(--radius-l);
+  padding: 24px 22px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.trends-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.trends-main-title {
+  font-size: 1.25rem;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trends-badge {
+  font-size: 0.74rem;
+  font-weight: 800;
+  background: #FAF7F0;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  color: var(--mochi-ink-sub);
+}
+
+.trends-subtitle {
+  font-size: 0.84rem;
+  color: var(--mochi-ink-sub);
+}
+
+.trends-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+@media (min-width: 520px) {
+  .trends-kpi-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.trends-kpi-box {
+  background: #FAF8F4;
+  border: var(--border-subtle);
+  border-radius: var(--radius-m);
+  padding: 12px 14px;
+  text-align: center;
+}
+
+.trends-kpi-label {
+  font-size: 0.74rem;
+  color: var(--mochi-ink-sub);
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.trends-kpi-value {
+  font-size: 1.15rem;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+
+/* グラフカード */
+.trends-chart-card {
+  background: var(--mochi-white);
+  border: var(--border-card);
+  border-radius: var(--radius-l);
+  padding: 24px 20px 20px;
+  box-shadow: var(--shadow-card);
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chart-title {
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+
+.chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--mochi-ink-sub);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.legend-dot.variable { background: var(--mochi-yaki); }
+.legend-dot.fixed { background: #8B5CF6; }
+.legend-dot.settled { background: #10B981; }
+
+.trends-svg-container {
+  width: 100%;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+/* 月別カードリスト */
+.trends-months-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.trends-month-card {
+  background: var(--mochi-white);
+  border: var(--border-card);
+  border-radius: var(--radius-m);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-card);
+  transition: transform var(--dur-base) ease, box-shadow var(--dur-base) ease;
+}
+
+.trends-month-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.trends-month-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  padding-bottom: 8px;
+}
+
+.month-badge-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trends-month-name {
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.status-pill {
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+
+.status-pill.settled {
+  background: #ECFDF5;
+  color: #065F46;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.status-pill.active {
+  background: #FFFBEB;
+  color: #92400E;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.trends-month-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.month-metric-box {
+  background: #FAF8F4;
+  border-radius: var(--radius-s);
+  padding: 8px 6px;
+}
+
+.month-metric-label {
+  font-size: 0.72rem;
+  color: var(--mochi-ink-sub);
+  font-weight: 700;
+}
+
+.month-metric-val {
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.trends-month-partners {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #FAF7F0;
+  border-radius: var(--radius-s);
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.trends-settlement-result {
+  font-size: 0.84rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 4px;
+}
+
+/* ========================================================
    SP (スマートフォン) レスポンシブ最適化
    ======================================================== */
 @media (max-width: 480px) {
