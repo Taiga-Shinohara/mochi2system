@@ -607,88 +607,99 @@ body {
   border-color: var(--partner-b-border);
 }
 
-/* 遊具風シーソーラッパー（高さを広げて窮屈さを解消） */
+/* シーソーの3パターン切り替えボタン（変動費 / 固定費 / 全体） */
+.seesaw-scope-bar {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.seesaw-scope-toggle {
+  display: inline-flex;
+  background: var(--mochi-surface-sub);
+  padding: 4px;
+  border-radius: var(--radius-full);
+  gap: 4px;
+  border: 1px solid var(--border-subtle);
+}
+
+.seesaw-scope-btn {
+  border: none;
+  background: transparent;
+  padding: 6px 18px;
+  border-radius: var(--radius-full);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--mochi-ink-light);
+  cursor: pointer;
+  transition: all 0.2s var(--ease-mochi);
+  white-space: nowrap;
+}
+
+.seesaw-scope-btn.active {
+  background: #FFFFFF;
+  color: var(--mochi-ink);
+  font-weight: 800;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* 遊具風シーソーラッパー（添付画像デザイン完全準拠） */
 .playground-seesaw-wrapper {
   position: relative;
   width: 100%;
-  height: 128px;
+  max-width: 460px;
+  height: 120px;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  margin: 22px 0 10px;
+  margin: 16px auto 10px;
+  padding: 0 10px;
+  overflow: visible;
 }
 
-/* 傾く板（全体） */
-.seesaw-plank {
+/* 傾くシーソー板ラッパー（回転中心は赤い板の中心 50% 80%） */
+.irasutoya-seesaw-plank {
   position: absolute;
-  top: 54px;
-  width: 90%;
-  height: 14px;
-  transform-origin: 50% 50%;
+  bottom: 24px;
+  left: 3%;
+  right: 3%;
+  height: 52px;
+  transform-origin: 50% 80%;
   transition: transform 0.8s var(--ease-mochi);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: flex-end;
+  justify-content: center;
   z-index: 2;
 }
 
-/* 木製板バー */
-.seesaw-bar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 14px;
-  background: #FFFFFF;
-  border: 1.5px solid #D8D0C2;
-  border-radius: var(--radius-full);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
-  z-index: 1;
+/* 赤いシーソー板画像（黄色ハンドル付き） */
+.plank-graphic-img {
+  width: 100%;
+  height: auto;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.08));
 }
 
-/* 中心ピボットピン */
-.seesaw-pivot-pin {
+/* シーソー上の犬の席（板の両端・ハンドル付近） */
+.seesaw-dog-seat {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--mochi-yaki);
-  border: 2px solid #FFFFFF;
-  transform: translate(-50%, -50%);
-  z-index: 3;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-}
-
-/* 両端の席 */
-.seesaw-seat {
-  position: absolute;
-  top: -54px;
+  top: -26px;
   z-index: 4;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
 }
 
-.seesaw-seat.seat-a {
-  left: -8px;
+.seesaw-dog-seat.seat-a {
+  left: 6%;
 }
 
-.seesaw-seat.seat-b {
-  right: -8px;
-}
-
-.seesaw-dog-rider {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  position: relative;
+.seesaw-dog-seat.seat-b {
+  right: 6%;
 }
 
 .dog-rider-img {
-  width: 46px;
-  height: 46px;
+  width: 44px;
+  height: 44px;
   object-fit: contain;
   filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.12));
   transition: transform 0.3s var(--ease-mochi);
@@ -703,66 +714,54 @@ body {
   50% { transform: translateY(3px); }
 }
 
-.seat-badge {
-  font-size: 0.68rem;
-  font-weight: 800;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  border: none;
-  background: var(--mochi-white);
-  margin-top: -3px;
-  white-space: nowrap;
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);
-}
-
-.seat-badge.plus {
-  background: var(--mochi-yaki);
-  color: #1A1A1A;
-}
-
-.seat-badge.minus {
-  background: #FFFFFF;
-  color: var(--mochi-ink-sub);
-}
-
-/* ハンドル棒 */
-.seat-handle {
-  width: 8px;
-  height: 10px;
-  border: 2px solid #A89F90;
-  border-bottom: none;
-  border-radius: 4px 4px 0 0;
-  margin-top: 2px;
-}
-
-/* 三角の支点土台 */
-.seesaw-base-fulcrum {
+/* 水色の支柱スタンド */
+.irasutoya-seesaw-stand {
   position: absolute;
-  bottom: 8px;
+  bottom: 6px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  z-index: 1;
+  z-index: 3;
 }
 
-.fulcrum-triangle {
-  width: 0;
-  height: 0;
-  border-left: 22px solid transparent;
-  border-right: 22px solid transparent;
-  border-bottom: 34px solid var(--mochi-yaki);
-  position: relative;
-  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.1));
+.stand-graphic-img {
+  width: 52px;
+  height: auto;
+  display: block;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.06));
 }
 
 .fulcrum-ground-line {
-  width: 140px;
+  width: 80px;
   height: 3px;
   background: #D8D0C2;
-  border-radius: var(--radius-full);
+  border-radius: 2px;
   margin-top: -1px;
+}
+
+/* 月ナビゲーションのロック状態タグ */
+.month-locked-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #2E7D32;
+  background: #E8F5E9;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* FABロック中スタイル */
+.mochi-fab.fab-locked {
+  background: #B0A89C;
+  color: #FFFFFF;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  cursor: not-allowed;
 }
 
 .seesaw-labels {

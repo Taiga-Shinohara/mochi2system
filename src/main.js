@@ -159,8 +159,22 @@ class MochiBudgetApp {
       currentMonth: this.currentMonth
     });
 
+    const calcFixed = calculateSettlement({
+      expenses: [],
+      fixedCosts: this.fixedCosts,
+      settings: this.settings,
+      currentMonth: this.currentMonth
+    });
+
     const calc = calcAll;
-    const activeCalc = this.seesawScope === 'all' ? calcAll : calcVariable;
+    let activeCalc = calcVariable;
+    if (this.seesawScope === 'fixed') {
+      activeCalc = calcFixed;
+    } else if (this.seesawScope === 'all') {
+      activeCalc = calcAll;
+    } else {
+      activeCalc = calcVariable;
+    }
 
     const isConnected = this.storage.isConnected;
     const isSettled = this.storage.isMonthSettled(this.currentMonth);
@@ -285,6 +299,7 @@ class MochiBudgetApp {
             <button class="month-btn" id="btnPrevMonth">◀</button>
             <span class="current-month-label">${this.formatMonthDisplay(this.currentMonth)}</span>
             <button class="month-btn" id="btnNextMonth">▶</button>
+            ${isSettled ? `<span class="month-locked-tag">🔒 精算ロック済</span>` : ''}
           </div>
           ${isViewingOtherMonth ? `
             <button class="btn-secondary btn-return-month" id="btnReturnToCurrentMonth">
@@ -314,7 +329,7 @@ class MochiBudgetApp {
 
           <div class="settlement-amount-box">
             <div style="font-size: 0.78rem; font-weight: 800; color: var(--mochi-ink-sub); margin-bottom: 2px;">
-              ${this.seesawScope === 'variable' ? '⚡ 変動費（日常のお買い物・外食）の精算' : '🏠＋⚡ 全体の精算（固定費＋変動費）'}
+              ${this.seesawScope === 'variable' ? '⚡ 変動費（日常のお買い物・外食）の精算' : (this.seesawScope === 'fixed' ? '🔄 固定費の精算' : '🏠＋⚡ 全体の精算（固定費＋変動費）')}
             </div>
             ${activeCalc.status === 'even' ? `
               <div class="settlement-subtitle">今月の精算はぴったりです</div>
@@ -332,16 +347,19 @@ class MochiBudgetApp {
             `}
           </div>
 
-          <!-- 遊具風精算シーソー（両脇に犬・立替が多い人が沈み込む） -->
+          <!-- 遊具風精算シーソー（添付画像デザイン完全準拠） -->
           <div class="seesaw-container">
-            <!-- シーソー集計範囲切替（変動費のみ vs すべて含む） -->
+            <!-- シーソー集計範囲切替（変動費 / 固定費 / 全体） -->
             <div class="seesaw-scope-bar">
               <div class="seesaw-scope-toggle">
                 <button type="button" class="seesaw-scope-btn ${this.seesawScope === 'variable' ? 'active' : ''}" data-scope="variable">
-                  <span>⚡ 変動費のみ (日常の立替)</span>
+                  <span>変動費</span>
+                </button>
+                <button type="button" class="seesaw-scope-btn ${this.seesawScope === 'fixed' ? 'active' : ''}" data-scope="fixed">
+                  <span>固定費</span>
                 </button>
                 <button type="button" class="seesaw-scope-btn ${this.seesawScope === 'all' ? 'active' : ''}" data-scope="all">
-                  <span>🏠＋⚡ すべて (固定費含む)</span>
+                  <span>全体</span>
                 </button>
               </div>
             </div>
@@ -349,53 +367,39 @@ class MochiBudgetApp {
             <div class="seesaw-partners-row">
               <span class="partner-pill a">🐾 ${partnerAName}</span>
               <span class="seesaw-status-tag ${activeCalc.status === 'even' ? 'even' : (activeCalc.balanceA > 0 ? 'a-heavy' : 'b-heavy')}">
-                ${activeCalc.status === 'even' ? '⚖️ つり合っています' : (activeCalc.balanceA > 0 ? `🐾 ${partnerAName} が立替中` : `🐾 ${partnerBName} が立替中`)}
+                ${activeCalc.status === 'even' ? '⚖️ つり合っています' : (activeCalc.balanceA > 0 ? `🐾 ${partnerAName} が沈み中` : `🐾 ${partnerBName} が沈み中`)}
               </span>
               <span class="partner-pill b">🐾 ${partnerBName}</span>
             </div>
 
-            <!-- 遊具シーソー本体 -->
+            <!-- 遊具シーソー本体（添付画像デザイン） -->
             <div class="playground-seesaw-wrapper">
-              <div class="seesaw-plank" style="transform: rotate(${tiltDeg}deg);">
-                <!-- A側の席 & 犬アイコン -->
-                <div class="seesaw-seat seat-a">
-                  <div class="seesaw-dog-rider">
-                    <img src="/characters/mochi-smile.png" alt="${partnerAName}" class="dog-rider-img ${activeCalc.balanceA > 0 ? 'heavy-sink' : ''}" />
-                    <span class="seat-badge ${activeCalc.balanceA >= 0 ? 'plus' : 'minus'}">
-                      ${activeCalc.balanceA >= 0 ? `+¥${activeCalc.balanceA.toLocaleString()}` : `-¥${Math.abs(activeCalc.balanceA).toLocaleString()}`}
-                    </span>
-                  </div>
-                  <div class="seat-handle"></div>
+              <div class="irasutoya-seesaw-plank" style="transform: rotate(${tiltDeg}deg);">
+                <!-- A側の犬（左側の席） -->
+                <div class="seesaw-dog-seat seat-a">
+                  <img src="/characters/mochi-smile.png" alt="${partnerAName}" class="dog-rider-img ${activeCalc.balanceA > 0 ? 'heavy-sink' : ''}" />
                 </div>
 
-                <!-- シーソーの木製板 & 中心ピン -->
-                <div class="seesaw-bar">
-                  <div class="seesaw-pivot-pin"></div>
-                </div>
+                <!-- 赤いシーソー板（黄色ハンドル付き） -->
+                <img src="/seesaw-plank.png" class="plank-graphic-img" alt="シーソーの板" />
 
-                <!-- B側の席 & 犬アイコン -->
-                <div class="seesaw-seat seat-b">
-                  <div class="seesaw-dog-rider">
-                    <img src="/characters/mochi-stretch.png" alt="${partnerBName}" class="dog-rider-img ${activeCalc.balanceB > 0 ? 'heavy-sink' : ''}" />
-                    <span class="seat-badge ${activeCalc.balanceB >= 0 ? 'plus' : 'minus'}">
-                      ${activeCalc.balanceB >= 0 ? `+¥${activeCalc.balanceB.toLocaleString()}` : `-¥${Math.abs(activeCalc.balanceB).toLocaleString()}`}
-                    </span>
-                  </div>
-                  <div class="seat-handle"></div>
+                <!-- B側の犬（右側の席） -->
+                <div class="seesaw-dog-seat seat-b">
+                  <img src="/characters/mochi-stretch.png" alt="${partnerBName}" class="dog-rider-img ${activeCalc.balanceB > 0 ? 'heavy-sink' : ''}" />
                 </div>
               </div>
 
-              <!-- 支点（三角の土台）と地面 -->
-              <div class="seesaw-base-fulcrum">
-                <div class="fulcrum-triangle"></div>
+              <!-- 水色の支柱スタンド -->
+              <div class="irasutoya-seesaw-stand">
+                <img src="/seesaw-stand.png" class="stand-graphic-img" alt="シーソーの支柱" />
                 <div class="fulcrum-ground-line"></div>
               </div>
             </div>
 
             <div class="seesaw-labels">
-              <span>${activeCalc.balanceA > 0 ? '⬇️ 立替が多くて沈み中' : (activeCalc.balanceA < 0 ? '⬆️ 浮き中' : '均等')}</span>
+              <span>${activeCalc.balanceA > 0 ? '⬇️ 沈み中' : (activeCalc.balanceA < 0 ? '⬆️ 浮き中' : '均等')}</span>
               <span style="font-weight: 800; color: var(--mochi-ink);">${activeCalc.status === 'even' ? 'イーブン（0円）' : `差額: ¥${activeCalc.transferAmount.toLocaleString()}`}</span>
-              <span>${activeCalc.balanceB > 0 ? '⬇️ 立替が多くて沈み中' : (activeCalc.balanceB < 0 ? '⬆️ 浮き中' : '均等')}</span>
+              <span>${activeCalc.balanceB > 0 ? '⬇️ 沈み中' : (activeCalc.balanceB < 0 ? '⬆️ 浮き中' : '均等')}</span>
             </div>
           </div>
 
@@ -608,9 +612,17 @@ class MochiBudgetApp {
         `}
       </main>
 
-      <button class="mochi-fab" id="btnOpenExpenseModal">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        <span>記録する</span>
+      <button class="mochi-fab ${isSettled ? 'fab-locked' : ''}" id="btnOpenExpenseModal" title="${isSettled ? 'この月は精算完了済みのためロック中' : '支出・固定費を記録'}">
+        ${isSettled ? `
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          <span>精算済み</span>
+        ` : `
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>記録する</span>
+        `}
       </button>
 
       <div id="toastNotification" class="toast"></div>
@@ -1131,11 +1143,13 @@ class MochiBudgetApp {
       close();
       if (isSettled) {
         await this.storage.setMonthSettled(this.currentMonth, false);
-        this.showToast(`${monthLabel}のロックを解除しましたよ 🔓`);
+        await this.loadData();
         this.render();
         this.attachEventListeners();
+        this.showToast(`${monthLabel}のロックを解除しましたよ 🔓`);
       } else {
         await this.storage.setMonthSettled(this.currentMonth, true);
+        await this.loadData();
         this.handleSettleCelebration();
         this.render();
         this.attachEventListeners();
@@ -2116,7 +2130,7 @@ class MochiBudgetApp {
     });
   }
 
-  handleShareLine() {
+  async handleShareLine() {
     const calc = calculateSettlement({
       expenses: this.expenses,
       fixedCosts: this.fixedCosts,
@@ -2131,14 +2145,26 @@ class MochiBudgetApp {
       monthLabel
     });
 
-    const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(text)}`;
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text).then(() => {
-        this.showToast('メッセージをコピーしましたよ');
-        setTimeout(() => window.open(lineUrl, '_blank'), 400);
-      }).catch(() => window.open(lineUrl, '_blank'));
+    // 事前に設定されたLINE宛に直接通知を送信
+    if (this.lineService.isConfigured()) {
+      this.showToast('LINEへ通知を送信中... ⏳');
+      try {
+        const success = await this.lineService.sendMessage(text);
+        if (success) {
+          this.showToast('設定したLINE宛に直接通知を送りましたよ 💬✨');
+        } else {
+          this.showToast('LINE送信に失敗しました。設定を確認してください 💦');
+        }
+      } catch (err) {
+        console.error('LINE notification error', err);
+        this.showToast('LINE送信中にエラーが発生しました 💦');
+      }
     } else {
-      window.open(lineUrl, '_blank');
+      // LINE設定がまだの場合
+      this.showToast('LINE設定が未完了です。右上の⚙️からLINE設定を行ってください ⚙️');
+      setTimeout(() => {
+        this.openSettingsModal();
+      }, 1000);
     }
   }
 
