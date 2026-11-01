@@ -20,6 +20,18 @@ function getCurrentMonthString() {
   return `${year}-${month}`;
 }
 
+function getNextMonth(monthStr) {
+  if (!monthStr || !monthStr.includes('-')) return '';
+  const [yearStr, monthNumStr] = monthStr.split('-');
+  let year = parseInt(yearStr, 10);
+  let month = parseInt(monthNumStr, 10) + 1;
+  if (month > 12) {
+    month = 1;
+    year += 1;
+  }
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
 class MochiBudgetApp {
   constructor() {
     this.storage = new StorageService();
@@ -182,6 +194,13 @@ class MochiBudgetApp {
     const actualCurrentMonth = getCurrentMonthString();
     const isViewingOtherMonth = this.currentMonth !== actualCurrentMonth;
 
+    // 発生日は当月だが、翌月以降に繰り越された項目（精算完了後に追加された項目）
+    const carriedOverExpenses = this.expenses.filter(e => {
+      const origMonth = e.date ? e.date.substring(0, 7) : '';
+      const targetMonth = e.targetMonth || origMonth;
+      return origMonth === this.currentMonth && targetMonth !== this.currentMonth;
+    });
+
     // もし月別推移・一覧ビューが選択されている場合
     if (this.viewMode === 'trends') {
       appEl.innerHTML = `
@@ -318,7 +337,7 @@ class MochiBudgetApp {
           ${isSettled ? `
             <div class="settled-lock-banner">
               <span>🔒</span>
-              <span><strong>${this.formatMonthDisplay(this.currentMonth)}</strong> は精算完了・固定済みです（項目の追加・変更ロック中）</span>
+              <span><strong>${this.formatMonthDisplay(this.currentMonth)}</strong> は精算完了・固定済みです（項目の追加は翌月へ繰り越し登録されます🐾）</span>
             </div>
           ` : ''}
 
@@ -592,6 +611,9 @@ class MochiBudgetApp {
                       <div class="item-title-line">
                         <span class="item-title">${item.title}</span>
                         ${item.isFixed ? `<span class="partner-pill" style="font-size: 0.65rem; padding: 1px 6px;">固定費</span>` : ''}
+                        ${!item.isFixed && item.targetMonth && item.date && item.targetMonth !== item.date.substring(0, 7) ? `
+                          <span class="rollover-pill" title="発生日: ${item.date}（${this.formatMonthDisplay(item.targetMonth)}分へ繰越精算）">🔄 ${item.date.slice(5)}発生（繰越）</span>
+                        ` : ''}
                       </div>
                       <div class="item-sub-line">
                         <span>${item.date.slice(5)}</span>
@@ -609,16 +631,33 @@ class MochiBudgetApp {
               `;
             }).join('')}
           </section>
+
+          ${isSettled && carriedOverExpenses.length > 0 ? `
+            <div class="carried-over-summary-card">
+              <div class="carried-over-title">
+                <span>🔄</span>
+                <span>精算完了後に登録された支出（翌月繰越: ${carriedOverExpenses.length}件）</span>
+              </div>
+              <div class="carried-over-desc">
+                この月は精算完了済みのため、以下の項目は翌月（${carriedOverExpenses[0].targetMonth ? this.formatMonthDisplay(carriedOverExpenses[0].targetMonth) : ''}分など）の精算に繰り越されています🐾
+              </div>
+              <div class="carried-over-items">
+                ${carriedOverExpenses.map(item => `
+                  <div class="carried-over-mini-item">
+                    <span>📅 ${item.date.slice(5)} ${item.title}</span>
+                    <span style="font-weight: 700; color: var(--mochi-ink);">¥${Number(item.amount).toLocaleString()} → <strong>${item.targetMonth ? this.formatMonthDisplay(item.targetMonth) : ''}分</strong></span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
         `}
       </main>
 
-      <button class="mochi-fab ${isSettled ? 'fab-locked' : ''}" id="btnOpenExpenseModal" title="${isSettled ? 'この月は精算完了済みのためロック中' : '支出・固定費を記録'}">
+      <button class="mochi-fab ${isSettled ? 'fab-rollover' : ''}" id="btnOpenExpenseModal" title="${isSettled ? 'この月は精算完了済みのため、翌月分として繰り越して記録します' : '支出・固定費を記録'}">
         ${isSettled ? `
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-          <span>精算済み</span>
+          <span style="font-size: 1.15rem; line-height: 1;">🔄</span>
+          <span>記録（翌月繰越）</span>
         ` : `
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           <span>記録する</span>
@@ -637,6 +676,9 @@ class MochiBudgetApp {
     // 1. 記録されている全年月を収集
     const monthSet = new Set();
     this.expenses.forEach(e => {
+      if (e.targetMonth) {
+        monthSet.add(e.targetMonth);
+      }
       if (e.date && e.date.length >= 7) {
         monthSet.add(e.date.substring(0, 7));
       }
@@ -1030,18 +1072,10 @@ class MochiBudgetApp {
     });
 
     appEl.querySelector('#btnOpenExpenseModal')?.addEventListener('click', () => {
-      if (this.storage.isMonthSettled(this.currentMonth)) {
-        this.showToast(`🔒 ${this.formatMonthDisplay(this.currentMonth)}は精算済みのため記録できません。ロック解除してからお試しください。`);
-        return;
-      }
       this.openExpenseModal(null, 'variable');
     });
 
     appEl.querySelector('#btnAddFixedCost')?.addEventListener('click', () => {
-      if (this.storage.isMonthSettled(this.currentMonth)) {
-        this.showToast(`🔒 ${this.formatMonthDisplay(this.currentMonth)}は精算済みのため固定費を追加できません。`);
-        return;
-      }
       this.openExpenseModal(null, 'fixed');
     });
 
@@ -1059,8 +1093,21 @@ class MochiBudgetApp {
       const isFixed = itemEl.dataset.isFixed === 'true';
 
       itemEl.addEventListener('click', (e) => {
-        if (this.storage.isMonthSettled(this.currentMonth)) {
-          this.showToast(`🔒 ${this.formatMonthDisplay(this.currentMonth)}は精算完了済みのため編集・削除できません`);
+        // アイテムごとの精算対象月を判定
+        let itemSettled = false;
+        let itemMonthLabel = this.formatMonthDisplay(this.currentMonth);
+
+        if (isFixed) {
+          itemSettled = this.storage.isMonthSettled(this.currentMonth);
+        } else {
+          const targetExp = this.expenses.find(x => String(x.id) === String(id));
+          const targetM = targetExp?.targetMonth || (targetExp?.date ? targetExp.date.substring(0, 7) : this.currentMonth);
+          itemSettled = this.storage.isMonthSettled(targetM);
+          itemMonthLabel = this.formatMonthDisplay(targetM);
+        }
+
+        if (itemSettled) {
+          this.showToast(`🔒 ${itemMonthLabel}は精算完了済みのため編集・削除できません`);
           return;
         }
 
@@ -1179,7 +1226,10 @@ class MochiBudgetApp {
     const initialSplitType = itemToEdit ? itemToEdit.splitType : 'default';
     const initialCustomRatioA = itemToEdit?.customRatioA != null ? itemToEdit.customRatioA : defaultRatioA;
     const initialDate = itemToEdit?.date || getTodayString();
-    const initialStartMonth = itemToEdit?.startMonth || this.currentMonth;
+    const dateMonth = initialDate.substring(0, 7);
+    const isInitialDateSettled = this.storage.isMonthSettled(dateMonth);
+    const initialTargetMonth = itemToEdit?.targetMonth || (isInitialDateSettled ? getNextMonth(dateMonth) : dateMonth);
+    const initialStartMonth = itemToEdit?.startMonth || (this.storage.isMonthSettled(this.currentMonth) ? getNextMonth(this.currentMonth) : this.currentMonth);
 
     const modalContainer = document.getElementById('modalContainer');
     modalContainer.innerHTML = `
@@ -1208,6 +1258,15 @@ class MochiBudgetApp {
                 </button>
               </div>
               <input type="hidden" id="formCostType" value="${initialCostType}" />
+            </div>
+
+            <!-- 精算完了済み月への記録時の繰越案内バナー -->
+            <div id="rolloverNoticeBanner" class="rollover-notice-banner" style="display: none;">
+              <div style="display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: 0.85rem; margin-bottom: 3px;">
+                <span>🔄</span>
+                <span id="rolloverNoticeTitle">次月への繰越登録</span>
+              </div>
+              <div id="rolloverNoticeText" style="font-size: 0.78rem; line-height: 1.45;"></div>
             </div>
 
             <!-- 固定費の説明案内 -->
@@ -1257,8 +1316,17 @@ class MochiBudgetApp {
             <div class="form-row">
               <!-- 変動費：日付 -->
               <div class="form-group" id="groupVariableDate" style="display: ${initialCostType === 'variable' ? 'block' : 'none'};">
-                <label class="form-label">日付</label>
+                <label class="form-label">支出の日付</label>
                 <input type="date" id="formDate" class="form-input" value="${initialDate}" />
+              </div>
+
+              <!-- 変動費：精算対象月（繰越先） -->
+              <div class="form-group" id="groupVariableTargetMonth" style="display: ${initialCostType === 'variable' ? 'block' : 'none'};">
+                <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+                  <span>精算対象の月</span>
+                  <span id="targetMonthStatusBadge" class="target-month-badge" style="display: none;">🔄 翌月繰越</span>
+                </label>
+                <select id="formTargetMonth" class="form-select"></select>
               </div>
 
               <!-- 固定費：開始月 -->
@@ -1313,6 +1381,11 @@ class MochiBudgetApp {
     const formCostType = overlay.querySelector('#formCostType');
     const fixedNotice = overlay.querySelector('#fixedCostNotice');
     const groupVariableDate = overlay.querySelector('#groupVariableDate');
+    const groupVariableTargetMonth = overlay.querySelector('#groupVariableTargetMonth');
+    const formTargetMonth = overlay.querySelector('#formTargetMonth');
+    const targetMonthStatusBadge = overlay.querySelector('#targetMonthStatusBadge');
+    const rolloverNoticeBanner = overlay.querySelector('#rolloverNoticeBanner');
+    const rolloverNoticeText = overlay.querySelector('#rolloverNoticeText');
     const groupFixedStartMonth = overlay.querySelector('#groupFixedStartMonth');
     const modalHeadingTitle = overlay.querySelector('#modalHeadingTitle');
     const labelPayerQuestion = overlay.querySelector('#labelPayerQuestion');
@@ -1322,6 +1395,62 @@ class MochiBudgetApp {
     const formAmount = overlay.querySelector('#formAmount');
     const labelTitle = overlay.querySelector('#labelTitle');
     const formTitle = overlay.querySelector('#formTitle');
+    const formDate = overlay.querySelector('#formDate');
+
+    // 精算対象月（繰越先）の動的オプション生成＆バナー更新
+    const updateTargetMonthOptions = (explicitTarget = null) => {
+      const curDateStr = formDate.value || getTodayString();
+      const curDateMonth = curDateStr.substring(0, 7);
+      const isDateSettled = this.storage.isMonthSettled(curDateMonth);
+      const nextM = getNextMonth(curDateMonth);
+      const nextNextM = getNextMonth(nextM);
+
+      const monthCandidates = [curDateMonth, nextM, nextNextM];
+      if (itemToEdit?.targetMonth && !monthCandidates.includes(itemToEdit.targetMonth)) {
+        monthCandidates.push(itemToEdit.targetMonth);
+      }
+      monthCandidates.sort();
+
+      let defaultTarget = explicitTarget || (isDateSettled ? nextM : curDateMonth);
+      if (itemToEdit?.targetMonth && !explicitTarget) {
+        defaultTarget = itemToEdit.targetMonth;
+      }
+
+      formTargetMonth.innerHTML = monthCandidates.map(m => {
+        const mSettled = this.storage.isMonthSettled(m);
+        let label = this.formatMonthDisplay(m);
+        if (m === curDateMonth) {
+          label += isDateSettled ? ' (🔒 精算ロック済)' : ' (当月精算)';
+        } else if (m === nextM) {
+          label += ' (翌月繰越 🔄)';
+        } else {
+          label += ' (繰越)';
+        }
+        return `<option value="${m}" ${m === defaultTarget ? 'selected' : ''}>${label}</option>`;
+      }).join('');
+
+      const activeTarget = formTargetMonth.value || defaultTarget;
+      const isRollover = activeTarget !== curDateMonth;
+
+      if (formCostType.value === 'variable' && (isDateSettled || isRollover)) {
+        rolloverNoticeBanner.style.display = 'block';
+        rolloverNoticeText.innerHTML = `
+          支出日（<strong>${curDateStr}</strong>）の月【${this.formatMonthDisplay(curDateMonth)}】は精算完了済みのため、支出日はそのまま<strong>翌月【${this.formatMonthDisplay(activeTarget)}分】</strong>の精算に繰り越して登録されます🐾
+        `;
+        targetMonthStatusBadge.style.display = 'inline-block';
+        targetMonthStatusBadge.textContent = `🔄 ${this.formatMonthDisplay(activeTarget)}分繰越`;
+      } else {
+        rolloverNoticeBanner.style.display = 'none';
+        targetMonthStatusBadge.style.display = 'none';
+      }
+    };
+
+    formDate.addEventListener('input', () => updateTargetMonthOptions());
+    formDate.addEventListener('change', () => updateTargetMonthOptions());
+    formTargetMonth.addEventListener('change', () => updateTargetMonthOptions(formTargetMonth.value));
+
+    // 初期化時にターゲット月の候補と状態を反映
+    updateTargetMonthOptions(initialTargetMonth);
 
     const updateCostTypeUI = (type) => {
       formCostType.value = type;
@@ -1330,6 +1459,7 @@ class MochiBudgetApp {
         btnCostTypeFixed.classList.remove('active');
         fixedNotice.style.display = 'none';
         groupVariableDate.style.display = 'block';
+        groupVariableTargetMonth.style.display = 'block';
         groupFixedStartMonth.style.display = 'none';
         modalHeadingTitle.textContent = isEdit ? '支出を直す' : '支出を記録する';
         labelPayerQuestion.textContent = 'どちらが支払いましたか？';
@@ -1339,11 +1469,14 @@ class MochiBudgetApp {
         formAmount.placeholder = '例: 3500';
         labelTitle.textContent = '使った内容';
         formTitle.placeholder = '例: スーパーで食材まとめ買い';
+        updateTargetMonthOptions();
       } else {
         btnCostTypeFixed.classList.add('active');
         btnCostTypeVariable.classList.remove('active');
         fixedNotice.style.display = 'block';
         groupVariableDate.style.display = 'none';
+        groupVariableTargetMonth.style.display = 'none';
+        rolloverNoticeBanner.style.display = 'none';
         groupFixedStartMonth.style.display = 'block';
         modalHeadingTitle.textContent = isEdit ? '固定費を直す' : '固定費を記録する';
         labelPayerQuestion.textContent = '引落口座・カード担当';
@@ -1405,11 +1538,6 @@ class MochiBudgetApp {
       if (isDeleting) return;
       if (!editId) return;
 
-      if (this.storage.isMonthSettled(this.currentMonth)) {
-        alert(`【${this.formatMonthDisplay(this.currentMonth)}】は精算完了済みのため削除できません。ロックを解除してからお試しください。`);
-        return;
-      }
-
       const delBtn = overlay.querySelector('#btnDeleteExpense');
       if (originalType === 'fixed') {
         const msg = `この固定費を【${this.formatMonthDisplay(this.currentMonth)}以降】削除しますか？\n（過去の月の記録は残ります）`;
@@ -1454,16 +1582,6 @@ class MochiBudgetApp {
 
       if (!title || !amount) return;
 
-      // 対象月の精算ロック確認
-      const targetMonth = currentType === 'fixed'
-        ? (overlay.querySelector('#formFixedStartMonth').value || this.currentMonth)
-        : (overlay.querySelector('#formDate').value || getTodayString()).substring(0, 7);
-
-      if (this.storage.isMonthSettled(targetMonth)) {
-        alert(`【${this.formatMonthDisplay(targetMonth)}】は精算完了済みのため記録・変更できません。\nロックを解除してからお試しください。`);
-        return;
-      }
-
       // 二重登録防止：即座にボタン無効化＆ローディング表示
       isSubmitting = true;
       if (submitBtn) {
@@ -1477,9 +1595,25 @@ class MochiBudgetApp {
         const isUpdating = Boolean(editId);
 
         if (currentType === 'fixed') {
-          const startMonth = overlay.querySelector('#formFixedStartMonth').value || this.currentMonth;
-          let fixedId;
+          let startMonth = overlay.querySelector('#formFixedStartMonth').value || this.currentMonth;
 
+          if (this.storage.isMonthSettled(startMonth)) {
+            const nextStart = getNextMonth(startMonth);
+            if (confirm(`【${this.formatMonthDisplay(startMonth)}】は精算完了済みのため、翌月（${this.formatMonthDisplay(nextStart)}）以降の固定費として登録しますか？`)) {
+              startMonth = nextStart;
+            } else {
+              isSubmitting = false;
+              if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalSubmitText;
+                submitBtn.style.opacity = '1';
+                submitBtn.style.pointerEvents = 'auto';
+              }
+              return;
+            }
+          }
+
+          let fixedId;
           if (isUpdating && originalType === 'fixed') {
             fixedId = editId; // 既存固定費のIDをそのまま引き継ぐ（UPDATE）
           } else {
@@ -1522,8 +1656,27 @@ class MochiBudgetApp {
           this.showToast(isUpdating ? '固定費を更新しましたよ' : '固定費を記録しましたよ 🔄');
         } else {
           const date = overlay.querySelector('#formDate').value || getTodayString();
-          let expenseId;
+          const dateMonth = date.substring(0, 7);
+          let targetMonth = overlay.querySelector('#formTargetMonth')?.value || dateMonth;
 
+          // もし選択された精算対象月も精算ロック済みなら、さらに次月に繰り越すか確認
+          if (this.storage.isMonthSettled(targetMonth)) {
+            const nextAvailable = getNextMonth(targetMonth);
+            if (confirm(`【${this.formatMonthDisplay(targetMonth)}】はすでに精算完了済みです。\nさらに翌月（${this.formatMonthDisplay(nextAvailable)}分）の精算に繰り越して記録しますか？`)) {
+              targetMonth = nextAvailable;
+            } else {
+              isSubmitting = false;
+              if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalSubmitText;
+                submitBtn.style.opacity = '1';
+                submitBtn.style.pointerEvents = 'auto';
+              }
+              return;
+            }
+          }
+
+          let expenseId;
           if (isUpdating && originalType === 'variable') {
             expenseId = editId; // 既存支出のIDをそのまま引き継ぐ（UPDATE）
           } else {
@@ -1540,6 +1693,7 @@ class MochiBudgetApp {
             paidBy,
             category,
             date,
+            targetMonth, // 繰越精算月
             splitType,
             customRatioA
           };
@@ -1548,12 +1702,12 @@ class MochiBudgetApp {
           await this.loadData();
 
           if (!isUpdating) {
-            // 新規登録時のみLINE通知
+            // 新規登録時のみLINE通知（繰越先の精算月で計算結果を反映）
             const currentCalc = calculateSettlement({
               expenses: this.expenses,
               fixedCosts: this.fixedCosts,
               settings: this.settings,
-              currentMonth: this.currentMonth
+              currentMonth: targetMonth
             });
             this.lineService.notifyExpenseAdded(newExpense, currentCalc, this.settings);
           }
@@ -1561,7 +1715,13 @@ class MochiBudgetApp {
           close();
           this.render();
           this.attachEventListeners();
-          this.showToast(isUpdating ? '更新できましたよ' : '記録できましたよ ⚡');
+
+          const isRollover = targetMonth !== dateMonth;
+          if (isRollover && !isUpdating) {
+            this.showToast(`支出を【${this.formatMonthDisplay(targetMonth)}分】に繰越登録しましたよ 🔄✨`);
+          } else {
+            this.showToast(isUpdating ? '更新できましたよ' : '記録できましたよ ⚡');
+          }
         }
       } catch (err) {
         console.error('Save failed:', err);

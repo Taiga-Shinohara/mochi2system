@@ -3,16 +3,22 @@
  * 2人の支出・固定費・按分比率に基づく精算計算ロジック
  */
 
+export function getExpenseTargetMonth(expense) {
+  if (!expense) return '';
+  return expense.targetMonth || (expense.date ? expense.date.substring(0, 7) : '');
+}
+
 export function calculateSettlement({ expenses, fixedCosts, settings, currentMonth }) {
   const ratioA = (settings.defaultRatioA || 50) / 100;
   const ratioB = (settings.defaultRatioB || 50) / 100;
 
   // 1. 今月の対象アイテムを抽出（YYYY-MM）
-  const monthExpenses = expenses.filter(e => e.date.startsWith(currentMonth));
+  // 支出の精算対象月 (targetMonth) が currentMonth に合致するものを抽出（繰越対応）
+  const monthExpenses = (expenses || []).filter(e => getExpenseTargetMonth(e) === currentMonth);
   
   // 今月有効な固定費
   // 【フィードバック反映】登録月(startMonth)以降、かつ終了月(endMonth)より前の月のみ反映
-  const activeFixedCosts = fixedCosts.filter(f => {
+  const activeFixedCosts = (fixedCosts || []).filter(f => {
     if (f.active === false) return false;
     const start = f.startMonth || '2000-01';
     if (currentMonth < start) return false;
@@ -22,7 +28,12 @@ export function calculateSettlement({ expenses, fixedCosts, settings, currentMon
 
   // 全アイテムを結合（固定費は当月仮想アイテムとして結合）
   const allItems = [
-    ...monthExpenses.map(e => ({ ...e, isFixed: false })),
+    ...monthExpenses.map(e => ({
+      ...e,
+      isFixed: false,
+      targetMonth: getExpenseTargetMonth(e),
+      isRollover: Boolean(e.targetMonth && e.date && e.targetMonth !== e.date.substring(0, 7))
+    })),
     ...activeFixedCosts.map(f => ({
       id: `fixed_${f.id}`,
       title: f.title,
@@ -35,7 +46,9 @@ export function calculateSettlement({ expenses, fixedCosts, settings, currentMon
       isFixed: true,
       fixedCostId: f.id,
       startMonth: f.startMonth,
-      endMonth: f.endMonth
+      endMonth: f.endMonth,
+      targetMonth: currentMonth,
+      isRollover: false
     }))
   ];
 

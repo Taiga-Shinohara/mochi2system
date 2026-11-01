@@ -23,6 +23,7 @@ create table if not exists public.pairpay_expenses (
   paid_by text not null,
   category text not null,
   date text not null,
+  target_month text, -- 精算対象月 (YYYY-MM、繰越対応)
   split_type text default 'default',
   custom_ratio_a numeric,
   memo text,
@@ -74,6 +75,9 @@ create policy "Allow all access to settings" on public.pairpay_settings for all 
 alter publication supabase_realtime add table public.pairpay_expenses;
 alter publication supabase_realtime add table public.pairpay_fixed_costs;
 alter publication supabase_realtime add table public.pairpay_settings;
+
+-- 既存テーブルがある場合の安全マイグレーション
+alter table public.pairpay_expenses add column if not exists target_month text;
 `;
 
 const LOCAL_STORAGE_KEYS = {
@@ -361,6 +365,7 @@ export class StorageService {
           paidBy: d.paid_by,
           category: d.category,
           date: d.date,
+          targetMonth: d.target_month || (d.date ? d.date.substring(0, 7) : ''),
           splitType: d.split_type,
           customRatioA: d.custom_ratio_a != null ? Number(d.custom_ratio_a) : null,
           memo: d.memo
@@ -434,6 +439,7 @@ export class StorageService {
             paidBy: d.paid_by,
             category: d.category,
             date: d.date,
+            targetMonth: d.target_month || (d.date ? d.date.substring(0, 7) : ''),
             splitType: d.split_type,
             customRatioA: d.custom_ratio_a != null ? Number(d.custom_ratio_a) : null,
             memo: d.memo
@@ -469,6 +475,7 @@ export class StorageService {
 
     if (this.isConnected && this.supabase) {
       try {
+        const targetMonth = expense.targetMonth || (expense.date ? expense.date.substring(0, 7) : '');
         const payload = {
           id: expense.id,
           title: expense.title,
@@ -476,31 +483,45 @@ export class StorageService {
           paid_by: expense.paidBy,
           category: expense.category,
           date: expense.date,
+          target_month: targetMonth,
           split_type: expense.splitType || 'default',
           custom_ratio_a: expense.customRatioA,
           memo: expense.memo || ''
         };
 
-        if (isUpdate) {
-          // 既存項目の確実な更新（UPDATEを発行して新規行の増殖を防止）
-          const { error } = await this.supabase
-            .from('pairpay_expenses')
-            .update(payload)
-            .eq('id', expense.id);
-          if (error) {
-            console.warn('Supabase update failed, attempting upsert', error);
-            await this.supabase.from('pairpay_expenses').upsert(payload, { onConflict: 'id' });
+        const tryUpsert = async (p) => {
+          if (isUpdate) {
+            const { error } = await this.supabase
+              .from('pairpay_expenses')
+              .update(p)
+              .eq('id', expense.id);
+            if (error) {
+              if (error.code === '42703' && p.target_month !== undefined) {
+                // target_monthカラムがまだクラウド側にない場合のフォールバック
+                const pFallback = { ...p };
+                delete pFallback.target_month;
+                return tryUpsert(pFallback);
+              }
+              console.warn('Supabase update failed, attempting upsert', error);
+              await this.supabase.from('pairpay_expenses').upsert(p, { onConflict: 'id' });
+            }
+          } else {
+            const { error } = await this.supabase
+              .from('pairpay_expenses')
+              .insert(p);
+            if (error) {
+              if (error.code === '42703' && p.target_month !== undefined) {
+                const pFallback = { ...p };
+                delete pFallback.target_month;
+                return tryUpsert(pFallback);
+              }
+              console.warn('Supabase insert failed, attempting upsert', error);
+              await this.supabase.from('pairpay_expenses').upsert(p, { onConflict: 'id' });
+            }
           }
-        } else {
-          // 新規項目の作成
-          const { error } = await this.supabase
-            .from('pairpay_expenses')
-            .insert(payload);
-          if (error) {
-            console.warn('Supabase insert failed, attempting upsert', error);
-            await this.supabase.from('pairpay_expenses').upsert(payload, { onConflict: 'id' });
-          }
-        }
+        };
+
+        await tryUpsert(payload);
       } catch (e) {
         console.error('Supabase saveExpense error', e);
       }

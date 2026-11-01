@@ -102,13 +102,17 @@ export class LineService {
 
     const payer = expense.paidBy === 'A' ? settings.partnerAName : settings.partnerBName;
     const footer = this.formatUrlFooter(settings);
+    const isRollover = expense.targetMonth && expense.date && expense.targetMonth !== expense.date.substring(0, 7);
+    const [tY, tM] = (expense.targetMonth || '').split('-');
+    const targetMonthStr = tY && tM ? `${tY}年${parseInt(tM, 10)}月分` : '';
+    const rolloverText = isRollover ? `\n【精算】${targetMonthStr}へ繰越 🔄` : '';
 
     const text = `🐾 もちもち生活費に記録されました
 
 【内容】${expense.title}
 【金額】¥${Number(expense.amount).toLocaleString()}
 【支払】${payer}
-【日付】${expense.date}
+【日付】${expense.date}${rolloverText}
 
 現在の精算：
 ${calc.status === 'even' ? '🎉 ピッタリ（イーブン）です' : `👉 ${calc.payerName} → ${calc.receiverName} へ ¥${calc.transferAmount.toLocaleString()}`}${footer}`;

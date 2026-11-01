@@ -1996,3 +1996,93 @@ body {
     font-size: 0.92rem;
   }
 }
+
+/* 繰越（Rollover）バッジ＆通知スタイル */
+.rollover-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: #FEF3C7;
+  color: #B45309;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.target-month-badge {
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: #FEF3C7;
+  color: #92400E;
+  font-weight: 800;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.rollover-notice-banner {
+  background: #FFFBEB;
+  border: 1.5px solid #FCD34D;
+  border-radius: var(--radius-s);
+  padding: 11px 14px;
+  margin-bottom: 14px;
+  color: #92400E;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.carried-over-summary-card {
+  margin-top: 14px;
+  background: rgba(254, 243, 199, 0.45);
+  border: 1.5px dashed #F59E0B;
+  border-radius: var(--radius-m);
+  padding: 14px 16px;
+  color: var(--mochi-ink);
+}
+
+.carried-over-summary-card .carried-over-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+  font-size: 0.86rem;
+  color: #92400E;
+}
+
+.carried-over-summary-card .carried-over-desc {
+  font-size: 0.76rem;
+  color: var(--mochi-ink-sub);
+  margin-top: 3px;
+  margin-bottom: 8px;
+  line-height: 1.45;
+}
+
+.carried-over-summary-card .carried-over-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.carried-over-summary-card .carried-over-mini-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #FFFFFF;
+  border-radius: var(--radius-xs);
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+}
+
+.mochi-fab.fab-rollover {
+  background: #F59E0B;
+  color: #FFFFFF;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.4);
+}
+.mochi-fab.fab-rollover:hover {
+  background: #D97706;
+  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.5);
+}
+
