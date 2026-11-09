@@ -89,10 +89,28 @@ class MochiBudgetApp {
     }
 
     await this.recoverMissingExpenses();
+    this.autoRegisterPasscodeIfConnected();
 
     this.render();
     this.attachEventListeners();
     this.checkReminder();
+  }
+
+  // 同期中の端末であれば、合言葉（デフォルト: たいがあいり）をバックエンドにスタンバイ登録
+  async autoRegisterPasscodeIfConnected() {
+    const cfg = this.storage.getSupabaseConfig();
+    if (!this.storage.isConnected || !cfg.url || !cfg.key) return;
+    const passcode = localStorage.getItem('pairpay_saved_passcode_v1') || 'たいがあいり';
+    try {
+      fetch('/api/pair-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          passcode,
+          config: { url: cfg.url, key: cfg.key }
+        })
+      }).catch(() => {});
+    } catch {}
   }
 
   // 過去の同期不整合で未反映となった支出の自動復旧
@@ -2228,6 +2246,7 @@ class MochiBudgetApp {
   openSyncModal() {
     const cfg = this.storage.getSupabaseConfig();
     const isConnected = this.storage.isConnected;
+    const savedPasscode = localStorage.getItem('pairpay_saved_passcode_v1') || 'たいがあいり';
     const modalContainer = document.getElementById('modalContainer');
 
     modalContainer.innerHTML = `
@@ -2238,39 +2257,76 @@ class MochiBudgetApp {
             <button class="icon-btn" id="btnCloseSyncModal">✕</button>
           </div>
           <div class="modal-body">
-            <div style="font-size: 0.85rem; color: var(--mochi-ink-sub); line-height: 1.7;">
-              無料のSupabaseを連携すると、<strong>お互いのスマホから入力した瞬間にシーソーが動く</strong>ようになります。
+            <div style="background: ${isConnected ? '#F0FDF4' : '#FFFDF5'}; border: 1.5px solid ${isConnected ? '#86EFAC' : '#FCD34D'}; border-radius: var(--radius-m); padding: 12px 14px; font-weight: 800; font-size: 0.88rem; display: flex; align-items: center; justify-content: space-between;">
+              <span>現在の状態:</span>
+              <span style="color: ${isConnected ? '#16A34A' : '#D97706'};">${isConnected ? 'クラウド同期中 🟢' : 'この端末だけに保存中 🟡'}</span>
             </div>
 
-            <div style="background: var(--mochi-kinako); border: var(--line-main); border-radius: var(--radius-m); padding: 12px 14px; font-weight: 700; font-size: 0.85rem;">
-              状態: ${isConnected ? 'クラウドと同期中です 🟢' : 'この端末だけに保存されています 🟡'}
-            </div>
+            ${!isConnected ? `
+              <!-- 未接続端末向け：合言葉でかんたん同期 -->
+              <div style="background: #FFFDF5; border: 2px solid #F59E0B; border-radius: var(--radius-m); padding: 16px; margin-top: 10px; box-shadow: 0 4px 16px rgba(245, 158, 11, 0.12);">
+                <div style="font-weight: 800; font-size: 0.96rem; color: #92400E; display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                  <span>🔑</span><span>ふたりの合言葉でかんたん同期</span>
+                </div>
+                <div style="font-size: 0.78rem; color: var(--mochi-ink-sub); line-height: 1.55; margin-bottom: 12px;">
+                  パートナーから教えてもらった合言葉を入力するだけで、URLやキーをコピーすることなく一瞬で同じデータに同期されます🐾
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <input type="text" id="passcodeSyncInput" class="form-input" placeholder="例: たいがあいり" value="たいがあいり" style="font-size: 0.95rem; font-weight: 800; flex: 1;" />
+                  <button type="button" class="btn-primary" id="btnSyncByPasscode" style="padding: 10px 16px; white-space: nowrap; font-size: 0.85rem; background: #F59E0B; border-color: #D97706;">
+                    合言葉で同期 ⚡
+                  </button>
+                </div>
+              </div>
+            ` : `
+              <!-- 接続済み端末向け：合言葉の発行・更新 -->
+              <div style="background: #F0FDF4; border: 1.5px solid #86EFAC; border-radius: var(--radius-m); padding: 16px; margin-top: 10px;">
+                <div style="font-weight: 800; font-size: 0.92rem; color: #166534; display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                  <span>🔑</span><span>ふたりの合言葉を発行・更新</span>
+                </div>
+                <div style="font-size: 0.78rem; color: var(--mochi-ink-sub); line-height: 1.5; margin-bottom: 12px;">
+                  パートナーのiPhone（Chrome等）や別ブラウザで同じ合言葉を入れると、このデータと一発で同期できるようになります🐾
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <input type="text" id="passcodeRegisterInput" class="form-input" placeholder="例: たいがあいり" value="${savedPasscode}" style="font-size: 0.95rem; font-weight: 700; flex: 1;" />
+                  <button type="button" class="btn-primary" id="btnRegisterPasscode" style="padding: 10px 16px; white-space: nowrap; font-size: 0.85rem; background: #16A34A; border-color: #15803D;">
+                    合言葉を登録 🐾
+                  </button>
+                </div>
+              </div>
 
-            ${isConnected ? `
-              <div style="background: var(--mochi-milk); border: var(--line-main); border-radius: var(--radius-m); padding: 14px; box-shadow: 0 3px 0 var(--mochi-ink);">
-                <div style="font-weight: 800; font-size: 0.88rem; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
-                  <span>🐾</span><span>パートナーにかんたん連携URLを送る</span>
+              <!-- 招待リンクの直接コピー -->
+              <div style="background: var(--mochi-milk); border: var(--line-main); border-radius: var(--radius-m); padding: 12px 14px; margin-top: 10px;">
+                <div style="font-weight: 700; font-size: 0.82rem; margin-bottom: 6px; color: var(--mochi-ink-sub);">
+                  または招待URLを直接送る場合:
                 </div>
-                <div style="font-size: 0.78rem; color: var(--mochi-ink-sub); margin-bottom: 10px; line-height: 1.5;">
-                  下のボタンを押してLINE等でURLを送ると、パートナー側はURLを開くだけで自動的に同じデータと同期されます！
-                </div>
-                <button type="button" class="btn-primary" id="btnCopyInviteLink" style="width: 100%; padding: 8px 12px; font-size: 0.82rem; justify-content: center;">
+                <button type="button" class="btn-secondary" id="btnCopyInviteLink" style="width: 100%; padding: 8px 12px; font-size: 0.8rem; justify-content: center; background: #FFF;">
                   🔗 招待リンクをコピーする
                 </button>
               </div>
-            ` : ''}
+            `}
 
-            <div class="form-group">
-              <label class="form-label">Supabase URL</label>
-              <input type="text" id="syncUrl" class="form-input" placeholder="https://xxxxxxxx.supabase.co" value="${cfg.url || ''}" />
-            </div>
+            <!-- 手動設定（上級者・手動入力用） -->
+            <details style="background: var(--mochi-milk); border: var(--line-main); border-radius: var(--radius-m); padding: 10px 14px; font-size: 0.8rem; margin-top: 12px;">
+              <summary style="cursor: pointer; font-weight: 800; color: var(--mochi-ink-sub);">
+                ⚙️ 手動でSupabase URL/Keyを入力する
+              </summary>
+              <div style="margin-top: 10px;">
+                <div class="form-group">
+                  <label class="form-label">Supabase URL</label>
+                  <input type="text" id="syncUrl" class="form-input" placeholder="https://xxxxxxxx.supabase.co" value="${cfg.url || ''}" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Supabase Anon Key</label>
+                  <input type="password" id="syncKey" class="form-input" placeholder="eyJhbGciOiJIUzI1NiIsInR5..." value="${cfg.key || ''}" />
+                </div>
+                <button type="button" class="btn-primary" id="btnSaveSyncManual" style="width: 100%; margin-top: 8px; font-size: 0.85rem;">
+                  手動設定でつなぐ 💾
+                </button>
+              </div>
+            </details>
 
-            <div class="form-group">
-              <label class="form-label">Supabase Anon Key</label>
-              <input type="password" id="syncKey" class="form-input" placeholder="eyJhbGciOiJIUzI1NiIsInR5..." value="${cfg.key || ''}" />
-            </div>
-
-            <details style="background: var(--mochi-milk); border: var(--line-main); border-radius: var(--radius-m); padding: 10px 14px; font-size: 0.8rem;">
+            <details style="background: var(--mochi-milk); border: var(--line-main); border-radius: var(--radius-m); padding: 10px 14px; font-size: 0.8rem; margin-top: 10px;">
               <summary style="cursor: pointer; font-weight: 800; color: var(--mochi-konga);">
                 テーブル作成用SQLはこちら
               </summary>
@@ -2296,8 +2352,7 @@ class MochiBudgetApp {
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn-secondary" id="btnCancelSync">やめる</button>
-            <button type="button" class="btn-primary" id="btnSaveSync">つなぐ</button>
+            <button type="button" class="btn-secondary" id="btnCancelSync">とじる</button>
           </div>
         </div>
       </div>
@@ -2309,6 +2364,99 @@ class MochiBudgetApp {
     overlay.querySelector('#btnCloseSyncModal').addEventListener('click', close);
     overlay.querySelector('#btnCancelSync').addEventListener('click', close);
 
+    // 1. 合言葉で同期する処理（未同期端末）
+    overlay.querySelector('#btnSyncByPasscode')?.addEventListener('click', async () => {
+      const inputEl = overlay.querySelector('#passcodeSyncInput');
+      const passcode = (inputEl?.value || '').trim();
+      const btn = overlay.querySelector('#btnSyncByPasscode');
+
+      if (!passcode) {
+        alert('合言葉を入力してください');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = '照合中... ⏳';
+
+      try {
+        const res = await fetch(`/api/pair-sync?passcode=${encodeURIComponent(passcode)}`);
+        const data = await res.json();
+
+        if (!res.ok || !data.success || !data.config) {
+          alert(data.error || '合言葉が見つかりませんでした。\n同期中の端末で合言葉を登録してからお試しください。');
+          btn.disabled = false;
+          btn.textContent = '合言葉で同期 ⚡';
+          return;
+        }
+
+        const saveRes = await this.storage.saveSupabaseConfig(data.config.url, data.config.key);
+        btn.disabled = false;
+        btn.textContent = '合言葉で同期 ⚡';
+
+        if (saveRes && saveRes.success) {
+          localStorage.setItem('pairpay_saved_passcode_v1', passcode);
+          await this.loadData();
+          close();
+          this.render();
+          this.attachEventListeners();
+          this.showToast('🎉 合言葉でクラウド同期につながりました！');
+        } else {
+          alert(saveRes?.error || 'Supabaseへの接続に失敗しました');
+        }
+      } catch (err) {
+        console.error('Passcode sync error:', err);
+        alert('通信エラーが発生しました。インターネット接続を確認してください。');
+        btn.disabled = false;
+        btn.textContent = '合言葉で同期 ⚡';
+      }
+    });
+
+    // 2. 合言葉を登録・更新する処理（同期中端末）
+    overlay.querySelector('#btnRegisterPasscode')?.addEventListener('click', async () => {
+      const inputEl = overlay.querySelector('#passcodeRegisterInput');
+      const passcode = (inputEl?.value || '').trim();
+      const btn = overlay.querySelector('#btnRegisterPasscode');
+
+      if (!passcode) {
+        alert('合言葉を入力してください');
+        return;
+      }
+      if (!cfg.url || !cfg.key) {
+        alert('同期設定がありません');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = '登録中... ⏳';
+
+      try {
+        const res = await fetch('/api/pair-sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            passcode,
+            config: { url: cfg.url, key: cfg.key }
+          })
+        });
+        const data = await res.json();
+        btn.disabled = false;
+        btn.textContent = '合言葉を登録 🐾';
+
+        if (res.ok && data.success) {
+          localStorage.setItem('pairpay_saved_passcode_v1', passcode);
+          this.showToast(`合言葉「${passcode}」を登録しましたよ 🔑✨`);
+        } else {
+          alert(data.error || '合言葉の登録に失敗しました');
+        }
+      } catch (err) {
+        console.error('Passcode register error:', err);
+        alert('通信エラーが発生しました');
+        btn.disabled = false;
+        btn.textContent = '合言葉を登録 🐾';
+      }
+    });
+
+    // 招待リンクのコピー
     overlay.querySelector('#btnCopyInviteLink')?.addEventListener('click', () => {
       const inviteUrl = `${window.location.origin}${window.location.pathname}?supabase_url=${encodeURIComponent(cfg.url)}&supabase_key=${encodeURIComponent(cfg.key)}`;
       if (navigator.clipboard) {
@@ -2320,12 +2468,14 @@ class MochiBudgetApp {
       }
     });
 
+    // SQL コピー
     overlay.querySelector('#btnCopySql')?.addEventListener('click', () => {
       navigator.clipboard.writeText(SUPABASE_SETUP_SQL).then(() => {
         this.showToast('SQLをコピーしましたよ');
       });
     });
 
+    // RLS 無効化 SQL コピー
     overlay.querySelector('#btnCopyDisableRls')?.addEventListener('click', () => {
       const rlsSql = `alter table public.pairpay_expenses disable row level security;\nalter table public.pairpay_fixed_costs disable row level security;\nalter table public.pairpay_settings disable row level security;`;
       navigator.clipboard.writeText(rlsSql).then(() => {
@@ -2333,17 +2483,18 @@ class MochiBudgetApp {
       });
     });
 
-    overlay.querySelector('#btnSaveSync').addEventListener('click', async () => {
+    // 手動設定保存
+    overlay.querySelector('#btnSaveSyncManual')?.addEventListener('click', async () => {
       const url = overlay.querySelector('#syncUrl').value.trim();
       const key = overlay.querySelector('#syncKey').value.trim();
+      const btn = overlay.querySelector('#btnSaveSyncManual');
 
-      const btn = overlay.querySelector('#btnSaveSync');
       btn.disabled = true;
       btn.textContent = '接続中...';
 
       const res = await this.storage.saveSupabaseConfig(url, key);
       btn.disabled = false;
-      btn.textContent = 'つなぐ';
+      btn.textContent = '手動設定でつなぐ 💾';
 
       if (res && res.success) {
         await this.loadData();
