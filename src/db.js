@@ -420,19 +420,106 @@ export class StorageService {
       .subscribe();
   }
 
+  // ローカル保存されている支出を取得
+  getLocalExpenses() {
+    try {
+      const local = localStorage.getItem(LOCAL_STORAGE_KEYS.EXPENSES);
+      return local ? JSON.parse(local) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  // Supabase/PostgRESTのカラム不存在エラー（42703, PGRST204等）を検出
+  isMissingColumnError(err, columnName) {
+    if (!err) return false;
+    const str = `${err.code || ''} ${err.message || ''} ${err.details || ''} ${err.hint || ''}`.toLowerCase();
+    const col = (columnName || '').toLowerCase();
+    return (
+      err.code === '42703' ||
+      err.code === 'PGRST204' ||
+      str.includes(col) ||
+      str.includes('column') ||
+      str.includes('schema cache')
+    );
+  }
+
+  // 単一の支出をSupabaseへ安全に送信（カラム不存在時は自動で除外して再試行）
+  async syncSingleExpenseToSupabase(expense, isUpdate = false) {
+    if (!this.isConnected || !this.supabase) return false;
+
+    const targetMonth = expense.targetMonth || (expense.date ? expense.date.substring(0, 7) : '');
+    const payload = {
+      id: String(expense.id),
+      title: expense.title,
+      amount: Number(expense.amount),
+      paid_by: expense.paidBy,
+      category: expense.category,
+      date: expense.date,
+      target_month: targetMonth,
+      split_type: expense.splitType || 'default',
+      custom_ratio_a: expense.customRatioA != null ? Number(expense.customRatioA) : null,
+      memo: expense.memo || ''
+    };
+
+    const trySend = async (p) => {
+      let opError = null;
+      if (isUpdate) {
+        const { error } = await this.supabase
+          .from('pairpay_expenses')
+          .update(p)
+          .eq('id', expense.id);
+        opError = error;
+      } else {
+        const { error } = await this.supabase
+          .from('pairpay_expenses')
+          .insert(p);
+        opError = error;
+      }
+
+      if (opError) {
+        console.warn('Supabase expense op failed, testing fallback...', opError);
+        // target_monthカラムがない場合は除外して再試行
+        if (p.target_month !== undefined && this.isMissingColumnError(opError, 'target_month')) {
+          console.info('Retrying Supabase save without target_month column...');
+          const pFallback = { ...p };
+          delete pFallback.target_month;
+          return trySend(pFallback);
+        }
+        // それ以外のエラーまたはinsert重複の場合はupsertでフォールバック
+        const pFallback = { ...p };
+        delete pFallback.target_month; // 念のためtarget_monthも除外
+        const { error: upsertErr } = await this.supabase
+          .from('pairpay_expenses')
+          .upsert(pFallback, { onConflict: 'id' });
+        if (upsertErr) {
+          console.error('Supabase final fallback upsert failed:', upsertErr);
+          return false;
+        }
+      }
+      return true;
+    };
+
+    return await trySend(payload);
+  }
+
   // 支出 (Expenses)
   async getExpenses() {
     if (this.initPromise) {
       await this.initPromise;
     }
+    const local = this.getLocalExpenses();
+    const deletedIds = this.getDeletedIds('expenses');
+
     if (this.isConnected && this.supabase) {
       try {
         const { data, error } = await this.supabase
           .from('pairpay_expenses')
           .select('*')
           .order('date', { ascending: false });
+
         if (!error && data) {
-          const mapped = data.map(d => ({
+          const remoteMapped = data.map(d => ({
             id: d.id,
             title: d.title,
             amount: Number(d.amount),
@@ -444,23 +531,39 @@ export class StorageService {
             customRatioA: d.custom_ratio_a != null ? Number(d.custom_ratio_a) : null,
             memo: d.memo
           }));
-          localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify(mapped));
-          return mapped;
+
+          // 削除済みリストに入っていないリモート項目
+          const remoteFiltered = remoteMapped.filter(r => !deletedIds.has(String(r.id)));
+          const remoteIdSet = new Set(remoteFiltered.map(r => String(r.id)));
+
+          // リモートにまだ反映されていないローカル未同期項目を保護（上書き消去の防止）
+          const unsyncedLocal = local.filter(l => !remoteIdSet.has(String(l.id)) && !deletedIds.has(String(l.id)));
+
+          if (unsyncedLocal.length > 0) {
+            console.info(`Found ${unsyncedLocal.length} unsynced local expense(s). Preserving and pushing to Supabase...`);
+            for (const item of unsyncedLocal) {
+              this.syncSingleExpenseToSupabase(item, false).catch(err => {
+                console.warn('Syncing unsynced local item failed:', err);
+              });
+            }
+          }
+
+          // 未同期のローカル項目とリモート項目を合体マージ
+          const merged = [...unsyncedLocal, ...remoteFiltered];
+          merged.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+          localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify(merged));
+          return merged;
         }
       } catch (e) {
         console.warn('Supabase getExpenses failed', e);
       }
     }
-    try {
-      const local = localStorage.getItem(LOCAL_STORAGE_KEYS.EXPENSES);
-      return local ? JSON.parse(local) : [];
-    } catch {
-      return [];
-    }
+    return local.filter(l => !deletedIds.has(String(l.id)));
   }
 
   async saveExpense(expense) {
-    const current = await this.getExpenses();
+    const current = this.getLocalExpenses();
     const idx = current.findIndex(e => String(e.id) === String(expense.id));
     const isUpdate = idx >= 0;
 
@@ -472,56 +575,11 @@ export class StorageService {
       updated = [expense, ...current];
     }
     localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify(updated));
+    this.removeDeletedId('expenses', expense.id);
 
     if (this.isConnected && this.supabase) {
       try {
-        const targetMonth = expense.targetMonth || (expense.date ? expense.date.substring(0, 7) : '');
-        const payload = {
-          id: expense.id,
-          title: expense.title,
-          amount: expense.amount,
-          paid_by: expense.paidBy,
-          category: expense.category,
-          date: expense.date,
-          target_month: targetMonth,
-          split_type: expense.splitType || 'default',
-          custom_ratio_a: expense.customRatioA,
-          memo: expense.memo || ''
-        };
-
-        const tryUpsert = async (p) => {
-          if (isUpdate) {
-            const { error } = await this.supabase
-              .from('pairpay_expenses')
-              .update(p)
-              .eq('id', expense.id);
-            if (error) {
-              if (error.code === '42703' && p.target_month !== undefined) {
-                // target_monthカラムがまだクラウド側にない場合のフォールバック
-                const pFallback = { ...p };
-                delete pFallback.target_month;
-                return tryUpsert(pFallback);
-              }
-              console.warn('Supabase update failed, attempting upsert', error);
-              await this.supabase.from('pairpay_expenses').upsert(p, { onConflict: 'id' });
-            }
-          } else {
-            const { error } = await this.supabase
-              .from('pairpay_expenses')
-              .insert(p);
-            if (error) {
-              if (error.code === '42703' && p.target_month !== undefined) {
-                const pFallback = { ...p };
-                delete pFallback.target_month;
-                return tryUpsert(pFallback);
-              }
-              console.warn('Supabase insert failed, attempting upsert', error);
-              await this.supabase.from('pairpay_expenses').upsert(p, { onConflict: 'id' });
-            }
-          }
-        };
-
-        await tryUpsert(payload);
+        await this.syncSingleExpenseToSupabase(expense, isUpdate);
       } catch (e) {
         console.error('Supabase saveExpense error', e);
       }

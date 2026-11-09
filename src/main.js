@@ -88,9 +88,81 @@ class MochiBudgetApp {
       await this.loadData();
     }
 
+    await this.recoverMissingExpenses();
+
     this.render();
     this.attachEventListeners();
     this.checkReminder();
+  }
+
+  // 過去の同期不整合で未反映となった支出の自動復旧
+  async recoverMissingExpenses() {
+    const missingItems = [
+      {
+        title: 'コモディいいだ（野菜、調味料）',
+        amount: 500,
+        payerName: 'たいが',
+        date: '2026-11-06',
+        category: 'food'
+      },
+      {
+        title: 'しょくざい',
+        amount: 1373,
+        payerName: 'あいり',
+        date: '2026-11-09',
+        category: 'food'
+      }
+    ];
+
+    let recoveredCount = 0;
+    const current = await this.storage.getExpenses();
+
+    for (const item of missingItems) {
+      // 同名、同日、同額の項目が既に存在するか確認
+      const exists = current.some(e =>
+        e.title === item.title &&
+        Number(e.amount) === item.amount &&
+        e.date === item.date
+      );
+
+      if (!exists) {
+        // partnerAName / partnerBName から 'たいが' / 'あいり' のキー（AまたはB）を判定
+        let paidBy = 'A';
+        const nameA = (this.settings.partnerAName || '').toLowerCase();
+        const nameB = (this.settings.partnerBName || '').toLowerCase();
+        const targetPayer = item.payerName.toLowerCase();
+
+        if (nameA.includes(targetPayer)) {
+          paidBy = 'A';
+        } else if (nameB.includes(targetPayer)) {
+          paidBy = 'B';
+        } else {
+          // デフォルト: たいががA、あいりがB
+          paidBy = item.payerName === 'たいが' ? 'A' : 'B';
+        }
+
+        const newExp = {
+          id: `exp_rec_${item.date.replace(/-/g, '')}_${Math.random().toString(36).substr(2, 5)}`,
+          title: item.title,
+          amount: item.amount,
+          paidBy,
+          category: item.category,
+          date: item.date,
+          targetMonth: item.date.substring(0, 7),
+          splitType: 'default',
+          customRatioA: null
+        };
+
+        await this.storage.saveExpense(newExp);
+        recoveredCount++;
+      }
+    }
+
+    if (recoveredCount > 0) {
+      console.info(`Successfully recovered ${recoveredCount} missing expense(s).`);
+      await this.loadData();
+      this.showToast(`直近の記録 ${recoveredCount} 件を自動復元・同期しましたよ 🐾✨`);
+    }
   }
 
   async loadData() {
